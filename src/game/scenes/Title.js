@@ -1,27 +1,36 @@
 import Phaser from 'phaser';
 import { LEVEL_CONFIGS } from '../lib/generator.js';
 import { CHARACTER_CONFIGS, createPlayer } from '../lib/graphics.js';
+import { hideDpad, showDpad } from '../lib/dpad.js';
 
 export class TitleScene extends Phaser.Scene {
   constructor() { super('TitleScene'); }
+
+  init() {
+    this.inputReady = false;
+    this._selectedIndex = 0;
+    this._listRows = [];
+    this.previewSprite = null;
+    this.previewNameText = null;
+    this.previewBioText = null;
+  }
 
   create() {
     this.game.registry.set('levelSeeds', Array(LEVEL_CONFIGS.length).fill(null));
     this.game.registry.set('character', 'pip');
 
-    const dpad = document.getElementById('dpad');
-    if (dpad) dpad.style.display = 'none';
+    hideDpad();
     this.events.once('shutdown', () => {
       this.time.removeAllEvents();
-      const d = document.getElementById('dpad');
-      if (d) d.style.display = 'grid';
+      showDpad();
       if (this.previewSprite)   this.previewSprite.destroy();
       if (this.previewNameText) this.previewNameText.destroy();
       if (this.previewBioText)  this.previewBioText.destroy();
     });
 
-    this.inputReady = false;
     this.time.delayedCall(200, () => { this.inputReady = true; });
+
+
 
     this.add.rectangle(480, 360, 960, 720, 0x0d0d0d);
 

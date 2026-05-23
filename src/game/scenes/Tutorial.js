@@ -16,22 +16,41 @@ import {
   drawSpikeBase,
 } from '../lib/graphics.js';
 import { TUTORIAL_CONFIGS } from '../lib/tutorial-config.js';
+import { hideDpad, showDpad, wireDpad, unwireDpad } from '../lib/dpad.js';
 
 export class TutorialScene extends Phaser.Scene {
   constructor() {
     super('TutorialScene');
   }
 
-  create(data) {
+  init(data) {
     this.currentPhase = (data && data.phase) || 0;
+    this.flameRects = [];
+    this.bladeZones = [];
+    this.mummyList = [];
+    this._bladeTweens = [];
+    this._mummyGraphics = [];
+    this.spikeRects = [];
+    this._spikeGraphics = [];
+    this._spikeGlows = [];
+    this._winTriggered = false;
+    this.keysCollected = 0;
+    this._keyHudSlots = [null, null];
+    this._keyHudIcons = [null, null];
+    this._starEmitter = null;
+    this._key2RevealEmitter = null;
+    this._demoRunning = false;
+    this._allowPlayerInput = false;
+    this.pipMoving = false;
+    this._cycleTimers = [];
+  }
 
+  create(data) {
     if (this.currentPhase >= TUTORIAL_CONFIGS.length) {
-      const dpad = document.getElementById('dpad');
-      if (dpad) dpad.style.display = 'none';
+      hideDpad();
       this.events.once('shutdown', () => {
         this.time.removeAllEvents();
-        const d = document.getElementById('dpad');
-        if (d) d.style.display = 'grid';
+        showDpad();
       });
       this.showOptionsScreen();
       return;
@@ -126,12 +145,11 @@ export class TutorialScene extends Phaser.Scene {
       fontStyle: 'bold',
     });
 
-    const dpad = document.getElementById('dpad');
-    if (dpad) dpad.style.display = 'none';
+    hideDpad();
     this.events.once('shutdown', () => {
       this.time.removeAllEvents();
-      const d = document.getElementById('dpad');
-      if (d) d.style.display = 'grid';
+      showDpad();
+      unwireDpad(this);
       if (this.pip) this.pip.destroy();
       if (this._exitPulseTween) this._exitPulseTween.stop();
       if (this._instructionBox) this._instructionBox.destroy();
@@ -154,10 +172,6 @@ export class TutorialScene extends Phaser.Scene {
       this._mummyGraphics.forEach((g) => this.tweens.killTweensOf(g));
       this._spikeGraphics.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
       this._spikeGlows.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
-      ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach((id) => {
-        const btn = document.getElementById(id);
-        if (btn) btn.replaceWith(btn.cloneNode(true));
-      });
     });
 
     this.setupInput();
@@ -258,7 +272,13 @@ export class TutorialScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
       onUpdate: () => {
-        bladeIn = Math.abs(axe.angle) < 22;
+        const next = Math.abs(axe.angle) < 22;
+        if (next && !bladeIn) {
+          bladeIn = true;
+          this.checkBladeHazards();
+        } else if (!next && bladeIn) {
+          bladeIn = false;
+        }
       },
     });
 
@@ -346,6 +366,7 @@ export class TutorialScene extends Phaser.Scene {
             ease: 'Linear',
             onComplete: () => {
               rect.active = true;
+              this.checkSpikeHazards();
               this.time.delayedCall(2000, () => {
                 rect.active = false;
                 this.tweens.add({
@@ -420,6 +441,8 @@ export class TutorialScene extends Phaser.Scene {
         this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
         this.pipMoving = false;
         this.checkHazards();
+        this.checkBladeHazards();
+        this.checkSpikeHazards();
         this.checkWin();
         if (onMoveDone) onMoveDone();
       },
@@ -525,9 +548,6 @@ export class TutorialScene extends Phaser.Scene {
 
   update() {
     if (this.currentPhase >= TUTORIAL_CONFIGS.length) return;
-
-    this.checkBladeHazards();
-    this.checkSpikeHazards();
 
     if (this._demoRunning) {
       this.updateArrow();

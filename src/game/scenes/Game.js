@@ -18,15 +18,33 @@ import {
   drawVineTuft,
   drawGroundPlant,
 } from '../lib/graphics.js';
+import { showDpad, wireDpad, unwireDpad } from '../lib/dpad.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
   }
 
-  create(data) {
+  init(data) {
     this.levelIndex = data && data.level !== undefined ? data.level : 0;
+    this.flameRects = [];
+    this.bladeZones = [];
+    this.mummyList = [];
+    this._bladeTweens = [];
+    this._mummyGraphics = [];
+    this.spikeRects = [];
+    this._spikeGraphics = [];
+    this._spikeGlows = [];
+    this._winTriggered = false;
+    this.keysCollected = 0;
+    this._keyHudSlots = [null, null];
+    this._keyHudIcons = [null, null];
+    this._starEmitter = null;
+    this._key2RevealEmitter = null;
+    this.pipMoving = false;
+  }
 
+  create(data) {
     if (this.levelIndex >= LEVEL_CONFIGS.length) {
       this.scene.start("WinScene", { level: this.levelIndex - 1 });
       return;
@@ -208,11 +226,10 @@ export class GameScene extends Phaser.Scene {
       this._mummyGraphics.forEach((g) => this.tweens.killTweensOf(g));
       this._spikeGraphics.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
       this._spikeGlows.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
-      ["btn-up", "btn-down", "btn-left", "btn-right"].forEach((id) => {
-        const btn = document.getElementById(id);
-        if (btn) btn.replaceWith(btn.cloneNode(true));
-      });
+      unwireDpad(this);
     });
+
+    showDpad();
 
     this.validatePaths();
     this.setupInput();
@@ -336,7 +353,13 @@ export class GameScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
       onUpdate: () => {
-        bladeIn = Math.abs(axe.angle) < 22;
+        const next = Math.abs(axe.angle) < 22;
+        if (next && !bladeIn) {
+          bladeIn = true;
+          this.checkBladeHazards();
+        } else if (!next && bladeIn) {
+          bladeIn = false;
+        }
       },
     });
 
@@ -424,6 +447,7 @@ export class GameScene extends Phaser.Scene {
             ease: "Linear",
             onComplete: () => {
               rect.active = true;
+              this.checkSpikeHazards();
               this.time.delayedCall(2000, () => {
                 rect.active = false;
                 this.tweens.add({
@@ -512,18 +536,7 @@ export class GameScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D,
     });
 
-    const wire = (id, dCol, dRow) => {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-      btn.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        this.tryMove(dCol, dRow);
-      });
-    };
-    wire("btn-up", 0, -1);
-    wire("btn-down", 0, 1);
-    wire("btn-left", -1, 0);
-    wire("btn-right", 1, 0);
+    wireDpad(this, (dCol, dRow) => this.tryMove(dCol, dRow));
   }
 
   tryMove(dCol, dRow) {
@@ -560,6 +573,8 @@ export class GameScene extends Phaser.Scene {
         this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
         this.pipMoving = false;
         this.checkHazards();
+        this.checkBladeHazards();
+        this.checkSpikeHazards();
         this.checkWin();
       },
     });
@@ -829,8 +844,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    this.checkBladeHazards();
-    this.checkSpikeHazards();
     if (
       Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
       Phaser.Input.Keyboard.JustDown(this.wasd.up)
