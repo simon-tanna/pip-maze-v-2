@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/style.css">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+    <title>Pip's Temple Adventure</title>
+    <style>
+      body {
+        background: #1a0e07;
+      }
+      #app {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="game-container"></div>
+    </div>
+
+    <div
+      style="
+        font-family: 'Black Ops One';
+        position: absolute;
+        visibility: hidden;
+      "
+    >
+      Font Loader
+    </div>
+
+    <div
+      id="dpad"
+      style="
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        display: grid;
+        grid-template-columns: 72px 72px 72px;
+        grid-template-rows: 72px 72px 72px;
+        gap: 4px;
+        z-index: 1000;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      "
+    >
+      <div></div>
+      <button id="btn-up" style="grid-column: 2; grid-row: 1; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">▲</button>
+      <div></div>
+      <button id="btn-left" style="grid-column: 1; grid-row: 2; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">◄</button>
+      <div></div>
+      <button id="btn-right" style="grid-column: 3; grid-row: 2; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">►</button>
+      <div></div>
+      <button id="btn-down" style="grid-column: 2; grid-row: 3; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">▼</button>
+      <div></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
