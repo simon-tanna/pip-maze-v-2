@@ -4,8 +4,9 @@ import { tileRng } from '../lib/generator.js';
 import {
   CHARACTER_CONFIGS,
   createPlayer,
-  drawWallTile,
-  drawFloorTile,
+  bakeTileTextures,
+  wallTileKey,
+  floorTileKey,
   drawChest,
   drawKey,
   drawFlameNozzle,
@@ -96,29 +97,30 @@ export class TutorialScene extends Phaser.Scene {
     this._allowPlayerInput = false;
     this._seed = 12345;
 
+    bakeTileTextures(this);
+
     tutorialConfig.map.forEach((row, rowIdx) => {
       row.forEach((tile, colIdx) => {
         const x = colIdx * TILE_SIZE + TILE_SIZE / 2;
         const y = rowIdx * TILE_SIZE + TILE_SIZE / 2;
+        const variant = tileRng(this._seed, colIdx, rowIdx)();
 
         if (tile === 1) {
-          const wallG = drawWallTile(this, x, y, tileRng(this._seed, colIdx, rowIdx));
-          this.walls.add(wallG);
-        } else if (tile === 2) {
-          drawFloorTile(this, x, y, tileRng(this._seed, colIdx, rowIdx));
-        } else if (tile === 3) {
-          drawFloorTile(this, x, y, tileRng(this._seed, colIdx, rowIdx));
-          const chest = drawChest(this, x, y);
-          this._exitPulseTween = this.tweens.add({
-            targets: chest,
-            alpha: { from: 1, to: 0.75 },
-            duration: 700,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut',
-          });
+          const wallImg = this.add.image(x, y, wallTileKey(variant));
+          this.walls.add(wallImg);
         } else {
-          drawFloorTile(this, x, y, tileRng(this._seed, colIdx, rowIdx));
+          this.add.image(x, y, floorTileKey(variant));
+          if (tile === 3) {
+            const chest = drawChest(this, x, y);
+            this._exitPulseTween = this.tweens.add({
+              targets: chest,
+              alpha: { from: 1, to: 0.75 },
+              duration: 700,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut',
+            });
+          }
         }
       });
     });

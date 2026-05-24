@@ -355,9 +355,7 @@ export function drawMummy(scene, x, y) {
   return g;
 }
 
-export function drawWallTile(scene, x, y, rng) {
-  const g = scene.add.graphics();
-
+function paintWallTile(g, variantIdx) {
   g.fillStyle(0x8a6840);
   g.fillRect(-24, -24, 48, 48);
 
@@ -381,16 +379,14 @@ export function drawWallTile(scene, x, y, rng) {
     g.fillRect(bx + 2, by + 2, 5, 2);
   });
 
-  const variant = rng();
-
-  if (variant >= 0.5 && variant < 0.8) {
+  if (variantIdx === 1) {
     g.fillStyle(0x2a1400);
     g.fillRect(-20, 9, 2, 1);
     g.fillRect(-18, 10, 2, 2);
     g.fillRect(-16, 12, 1, 3);
     g.fillRect(-15, 15, 1, 2);
     g.fillRect(-14, 17, 2, 2);
-  } else if (variant >= 0.8) {
+  } else if (variantIdx === 2) {
     g.fillStyle(0x3d5c18);
     g.fillRect(-20, -22, 10, 3);
     g.fillRect(3, -22, 8, 3);
@@ -398,15 +394,9 @@ export function drawWallTile(scene, x, y, rng) {
     g.fillRect(-19, -22, 8, 2);
     g.fillRect(4, -22, 6, 2);
   }
-
-  g.x = x;
-  g.y = y;
-  return g;
 }
 
-export function drawFloorTile(scene, x, y, rng) {
-  const g = scene.add.graphics();
-
+function paintFloorTile(g, variantIdx) {
   g.fillStyle(0x3a2810);
   g.fillRect(-24, -24, 48, 48);
   g.fillStyle(0x5c3d1e);
@@ -417,15 +407,13 @@ export function drawFloorTile(scene, x, y, rng) {
   g.fillRect(-21, -21, 18, 3);
   g.fillRect(-21, -21, 3, 18);
 
-  const variant = rng();
-
-  if (variant >= 0.4 && variant < 0.75) {
+  if (variantIdx === 1) {
     g.fillStyle(0x3a2810);
     g.fillRect(-8, -6, 1, 14);
     g.fillRect(-8, -6, 8, 1);
     g.fillRect(-8, 4, 6, 1);
     g.fillRect(0, -6, 1, 7);
-  } else if (variant >= 0.75) {
+  } else if (variantIdx === 2) {
     g.fillStyle(0x3d5c18);
     g.fillRect(-9, -7, 18, 14);
     g.fillStyle(0x4a6820);
@@ -433,7 +421,53 @@ export function drawFloorTile(scene, x, y, rng) {
     g.fillStyle(0x3a2810);
     g.fillRect(-6, -4, 12, 1);
   }
+}
 
+export function wallTileKey(variantValue) {
+  if (variantValue < 0.5) return 'wall-tile-0';
+  if (variantValue < 0.8) return 'wall-tile-1';
+  return 'wall-tile-2';
+}
+
+export function floorTileKey(variantValue) {
+  if (variantValue < 0.4) return 'floor-tile-0';
+  if (variantValue < 0.75) return 'floor-tile-1';
+  return 'floor-tile-2';
+}
+
+// Bake all 3 wall + 3 floor variants into 48x48 textures once.
+// Paint helpers use centred coords (-24..24), so we position the temp
+// Graphics at (24, 24) before calling generateTexture so the captured
+// region is (0..48, 0..48).
+export function bakeTileTextures(scene) {
+  const bake = (key, paint, variantIdx) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.add.graphics();
+    g.translateCanvas(TILE_SIZE / 2, TILE_SIZE / 2);
+    paint(g, variantIdx);
+    g.generateTexture(key, TILE_SIZE, TILE_SIZE);
+    g.destroy();
+  };
+
+  for (let i = 0; i < 3; i++) bake(`wall-tile-${i}`, paintWallTile, i);
+  for (let i = 0; i < 3; i++) bake(`floor-tile-${i}`, paintFloorTile, i);
+}
+
+export function drawWallTile(scene, x, y, rng) {
+  const g = scene.add.graphics();
+  const v = rng();
+  const idx = v < 0.5 ? 0 : v < 0.8 ? 1 : 2;
+  paintWallTile(g, idx);
+  g.x = x;
+  g.y = y;
+  return g;
+}
+
+export function drawFloorTile(scene, x, y, rng) {
+  const g = scene.add.graphics();
+  const v = rng();
+  const idx = v < 0.4 ? 0 : v < 0.75 ? 1 : 2;
+  paintFloorTile(g, idx);
   g.x = x;
   g.y = y;
   return g;

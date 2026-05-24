@@ -4,8 +4,9 @@ import { LEVEL_CONFIGS, generateLevel, bfsPath, tileRng } from '../lib/generator
 import {
   CHARACTER_CONFIGS,
   createPlayer,
-  drawWallTile,
-  drawFloorTile,
+  bakeTileTextures,
+  wallTileKey,
+  floorTileKey,
   drawChest,
   drawKey,
   drawKeyIcon,
@@ -104,37 +105,34 @@ export class GameScene extends Phaser.Scene {
     this._starEmitter = null;
     this._key2RevealEmitter = null;
 
+    bakeTileTextures(this);
+
     const levelSeed = levelSeeds[this.levelIndex];
     levelData.map.forEach((row, rowIdx) => {
       row.forEach((tile, colIdx) => {
         const x = colIdx * TILE_SIZE + TILE_SIZE / 2;
         const y = rowIdx * TILE_SIZE + TILE_SIZE / 2;
+        const variant = tileRng(levelSeed, colIdx, rowIdx)();
 
         if (tile === 1) {
-          const wallG = drawWallTile(
-            this,
-            x,
-            y,
-            tileRng(levelSeed, colIdx, rowIdx),
-          );
-          this.walls.add(wallG);
-        } else if (tile === 2) {
-          this.startCol = colIdx;
-          this.startRow = rowIdx;
-          drawFloorTile(this, x, y, tileRng(levelSeed, colIdx, rowIdx));
-        } else if (tile === 3) {
-          drawFloorTile(this, x, y, tileRng(levelSeed, colIdx, rowIdx));
-          const chest = drawChest(this, x, y);
-          this._exitPulseTween = this.tweens.add({
-            targets: chest,
-            alpha: { from: 1, to: 0.75 },
-            duration: 700,
-            yoyo: true,
-            repeat: -1,
-            ease: "Sine.easeInOut",
-          });
+          const wallImg = this.add.image(x, y, wallTileKey(variant));
+          this.walls.add(wallImg);
         } else {
-          drawFloorTile(this, x, y, tileRng(levelSeed, colIdx, rowIdx));
+          this.add.image(x, y, floorTileKey(variant));
+          if (tile === 2) {
+            this.startCol = colIdx;
+            this.startRow = rowIdx;
+          } else if (tile === 3) {
+            const chest = drawChest(this, x, y);
+            this._exitPulseTween = this.tweens.add({
+              targets: chest,
+              alpha: { from: 1, to: 0.75 },
+              duration: 700,
+              yoyo: true,
+              repeat: -1,
+              ease: "Sine.easeInOut",
+            });
+          }
         }
       });
     });
