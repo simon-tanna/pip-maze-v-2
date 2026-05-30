@@ -94,24 +94,24 @@ export class WinScene extends Phaser.Scene {
     this.time.delayedCall(200, () => { this._inputReady = true; });
 
     if (gameComplete) {
-      this.add.text(480, 280, 'You completed the whole temple! 🏆', {
+      this.add.text(480, 280, 'The final chamber awaits...', {
         fontSize: '38px', color: '#ffd700', fontStyle: 'bold',
         stroke: '#4a2800', strokeThickness: 6,
         wordWrap: { width: 800 }, align: 'center'
       }).setOrigin(0.5);
 
-      this.add.text(480, 400, 'Play again', {
+      this.add.text(480, 400, 'Tap to descend', {
         fontSize: '32px', color: '#fff9e6',
         stroke: '#4a2800', strokeThickness: 4
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-      const restart = () => {
+      const descend = () => {
         if (!this._inputReady || this._started) return;
         this._started = true;
-        this.scene.start('TitleScene');
+        this.scene.start('BossScene');
       };
-      this.input.once('pointerdown', restart);
-      this.input.keyboard.once('keydown', restart);
+      this.input.once('pointerdown', descend);
+      this.input.keyboard.once('keydown', descend);
     } else {
       this.add.text(480, 300, 'You found the treasure!', {
         fontSize: '48px', color: '#ffd700', fontStyle: 'bold',

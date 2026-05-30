@@ -120,6 +120,19 @@ export class TitleScene extends Phaser.Scene {
       if (!this.inputReady) return;
       this.scene.start('TutorialScene', { phase: 0 });
     });
+
+    this._bossBtn = this.add.text(480, 695, 'BOSS FIGHT', {
+      fontFamily: 'monospace',
+      fontSize: '20px',
+      color: '#ff4444',
+      backgroundColor: '#330000',
+      padding: { x: 15, y: 8 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    this._bossBtn.on('pointerdown', () => {
+      if (!this.inputReady) return;
+      this.scene.start('BossScene');
+    });
   }
 
   update() {

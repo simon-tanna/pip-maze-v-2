@@ -537,3 +537,53 @@ export function drawGroundPlant(scene, x, y) {
   g.y = y;
   return g;
 }
+
+export function drawPillar(scene, x, y) {
+  const g = scene.add.graphics();
+
+  g.fillStyle(0x1a1208);
+  g.fillRect(-48, -48, 96, 96);
+  g.fillStyle(0x3a2a14);
+  g.fillRect(-46, -46, 92, 92);
+  g.fillStyle(0x7a6040);
+  g.fillRect(-44, -44, 88, 88);
+  g.fillStyle(0xa08050);
+  g.fillRect(-44, -44, 88, 6);
+  g.fillRect(-44, -44, 6, 88);
+
+  g.fillStyle(0x1a1208);
+  g.fillRect(-48, -48, 96, 10);
+  g.fillStyle(0x3a2a14);
+  g.fillRect(-46, -46, 92, 8);
+  g.fillStyle(0x8a7050);
+  g.fillRect(-44, -44, 88, 6);
+  g.fillStyle(0xb09060);
+  g.fillRect(-44, -44, 88, 2);
+
+  g.fillStyle(0x1a1208);
+  g.fillRect(-48, 38, 96, 10);
+  g.fillStyle(0x3a2a14);
+  g.fillRect(-46, 40, 92, 8);
+  g.fillStyle(0x8a7050);
+  g.fillRect(-44, 42, 88, 6);
+
+  g.fillStyle(0x2a1e0c);
+  g.fillRect(-18, -34, 4, 68);
+  g.fillStyle(0x5a4428);
+  g.fillRect(-17, -34, 2, 68);
+  g.fillStyle(0x2a1e0c);
+  g.fillRect(14, -34, 4, 68);
+  g.fillStyle(0x5a4428);
+  g.fillRect(15, -34, 2, 68);
+  g.fillStyle(0x5a4428);
+  g.fillRect(-2, -34, 2, 68);
+
+  g.fillStyle(0x2a1e0c);
+  g.fillRect(4, -20, 1, 12);
+  g.fillRect(4, -8, 8, 1);
+  g.fillRect(12, -8, 1, 6);
+
+  g.x = x;
+  g.y = y;
+  return g;
+}
