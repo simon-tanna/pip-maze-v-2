@@ -538,6 +538,167 @@ export function drawGroundPlant(scene, x, y) {
   return g;
 }
 
+export function drawLavaGlow(scene, x, y, w, h) {
+  const g = scene.add.graphics();
+  g.fillStyle(0xff6600, 0.10);
+  g.fillEllipse(0, 0, w, h);
+  g.fillStyle(0xff6600, 0.14);
+  g.fillEllipse(0, 0, w * 0.75, h * 0.78);
+  g.fillStyle(0xff8800, 0.18);
+  g.fillEllipse(0, 0, w * 0.5, h * 0.55);
+  g.fillStyle(0xffaa33, 0.22);
+  g.fillEllipse(0, 0, w * 0.3, h * 0.35);
+  g.x = x;
+  g.y = y;
+  return g;
+}
+
+export function drawLavaChannel(scene, x, y, height, opts = {}) {
+  const width = opts.width ?? 8;
+  const midCrack = opts.midCrack ?? true;
+  const g = scene.add.graphics();
+  g.x = x;
+  g.y = y;
+
+  const top = -height / 2;
+  const half = width / 2;
+  const crackY = top + Math.floor(height * 0.4);
+
+  let frame = 0;
+
+  const render = (f) => {
+    g.clear();
+
+    g.fillStyle(0x882200, 1);
+    g.fillRect(-half - 1, top, width + 2, height);
+
+    g.fillStyle(0xcc3300, 1);
+    g.fillRect(-half, top, width, height);
+
+    g.fillStyle(0xff5500, 1);
+    g.fillRect(-half + 1, top, width - 2, height);
+
+    if (width >= 6) {
+      g.fillStyle(0xff8800, 1);
+      g.fillRect(-half + 2, top, width - 4, height);
+    }
+
+    if (width >= 7) {
+      const innerHalf = Math.max(1, Math.floor((width - 5) / 2));
+      g.fillStyle(0xffcc33, 1);
+      g.fillRect(-innerHalf, top, innerHalf * 2 + 1, height);
+    }
+
+    g.fillStyle(0x882200, 1);
+    g.fillRect(-half - 2, top, width + 4, 4);
+    g.fillStyle(0xcc3300, 1);
+    g.fillRect(-half - 1, top, width + 2, 6);
+    g.fillStyle(0xff5500, 1);
+    g.fillRect(-half, top, width, 8);
+    g.fillStyle(0xffcc33, 1);
+    g.fillRect(-half + 1, top + 1, width - 2, 5);
+    g.fillStyle(0xffe680, 1);
+    g.fillRect(-1, top + 1, 2, 4);
+
+    if (midCrack) {
+      g.fillStyle(0x882200, 1);
+      g.fillRect(-half - 2, crackY, width + 4, 10);
+      g.fillStyle(0xcc3300, 1);
+      g.fillRect(-half - 1, crackY + 1, width + 2, 8);
+      g.fillStyle(0xff5500, 1);
+      g.fillRect(-half, crackY + 1, width, 8);
+      g.fillStyle(0xff8800, 1);
+      g.fillRect(-half + 1, crackY + 2, width - 2, 6);
+      g.fillStyle(0xffcc33, 1);
+      g.fillRect(-half + 2, crackY + 2, width - 4, 6);
+      g.fillStyle(0xffe680, 1);
+      g.fillRect(-1, crackY + 3, 2, 4);
+    }
+
+    g.fillStyle(0xffe680, 1);
+    const segLen = 6;
+    const gap = 10;
+    const cycle = segLen + gap;
+    const scrollOffset = (f * 3) % cycle;
+    for (let sy = top + 2 - scrollOffset; sy < top + height - 4; sy += cycle) {
+      const segStart = Math.max(top + 2, sy);
+      const segEnd = Math.min(top + height - 4, sy + segLen);
+      if (segEnd > segStart) {
+        g.fillRect(-1, segStart, 2, segEnd - segStart);
+      }
+    }
+
+    const bottom = top + height;
+    g.fillStyle(0xff5500, 1);
+    g.fillRect(-half - 1, bottom - 4, width + 2, 4);
+    g.fillStyle(0xff8800, 1);
+    g.fillRect(-half, bottom - 3, width, 3);
+    g.fillStyle(0xffcc33, 1);
+    g.fillRect(-half + 1, bottom - 2, width - 2, 2);
+    g.fillStyle(0xffe680, 1);
+    g.fillRect(-1, bottom - 2, 2, 2);
+  };
+
+  render(0);
+
+  scene.time.addEvent({
+    delay: 120,
+    loop: true,
+    callback: () => {
+      if (!g.scene) return;
+      frame++;
+      render(frame);
+    },
+  });
+
+  return g;
+}
+
+export function drawLavaPool(scene, x, y, w = 90, h = 22) {
+  const g = scene.add.graphics();
+  g.x = x;
+  g.y = y;
+
+  let frame = 0;
+
+  const render = (f) => {
+    g.clear();
+    const pulse = (f % 2 === 0) ? 0 : 1;
+
+    g.fillStyle(0xff5500, 0.35);
+    g.fillEllipse(0, 0, w + 20, h + 10);
+    g.fillStyle(0xff6600, 0.5);
+    g.fillEllipse(0, 0, w + 8, h + 4);
+
+    g.fillStyle(0x882200, 1);
+    g.fillEllipse(0, 0, w, h);
+    g.fillStyle(0xcc3300, 1);
+    g.fillEllipse(0, 0, w - 4, h - 2);
+    g.fillStyle(0xff5500, 1);
+    g.fillEllipse(0, 0, w - 10, h - 5);
+    g.fillStyle(0xff8800, 1);
+    g.fillEllipse(0, 0, w - 18, h - 8);
+    g.fillStyle(0xffcc33, 1);
+    g.fillEllipse(0, 0, w - 28 - pulse, h - 12);
+    g.fillStyle(0xffe680, 1);
+    g.fillEllipse(0, -1, w - 40 - pulse * 2, h - 16);
+  };
+
+  render(0);
+
+  scene.time.addEvent({
+    delay: 180,
+    loop: true,
+    callback: () => {
+      if (!g.scene) return;
+      frame++;
+      render(frame);
+    },
+  });
+
+  return g;
+}
+
 export function drawPillar(scene, x, y) {
   const g = scene.add.graphics();
 

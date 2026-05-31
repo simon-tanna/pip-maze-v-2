@@ -1,7 +1,14 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
 import { LEVEL_CONFIGS } from '../lib/generator.js';
-import { CHARACTER_CONFIGS, createPlayer, drawPillar } from '../lib/graphics.js';
+import {
+  CHARACTER_CONFIGS,
+  createPlayer,
+  drawPillar,
+  drawLavaGlow,
+  drawLavaChannel,
+  drawLavaPool,
+} from '../lib/graphics.js';
 
 const TINT_RED = 0xff0000;
 
@@ -65,14 +72,42 @@ export class BossScene extends Phaser.Scene {
     this._pillarGroup = this.physics.add.staticGroup();
 
     PILLAR_POSITIONS.forEach(({ x, y }) => {
+      const glow = drawLavaGlow(this, x, y, 140, 160);
+      glow.setDepth(0.3);
+      this._allGraphics.push(glow);
+
       const pg = drawPillar(this, x, y);
+      pg.setDepth(0.4);
       this._allGraphics.push(pg);
+
+      const channel = drawLavaChannel(this, x, y, 96, { width: 8, midCrack: true });
+      channel.setDepth(0.6);
+      this._allGraphics.push(channel);
+
+      const pool = drawLavaPool(this, x, y + 48 + 4, 96, 22);
+      pool.setDepth(0.6);
+      this._allGraphics.push(pool);
+
       const pillarBody = this.add.rectangle(x, y, 96, 96, 0x000000, 0);
       this.physics.add.existing(pillarBody, true);
       this._pillarGroup.add(pillarBody);
     });
 
+    const wallChannels = [
+      { x: 24,  y: 360, height: 660 },
+      { x: 936, y: 360, height: 660 },
+    ];
+    wallChannels.forEach(({ x, y, height }) => {
+      const wGlow = drawLavaGlow(this, x, y, 80, height + 40);
+      wGlow.setDepth(0.3);
+      this._allGraphics.push(wGlow);
+      const wCh = drawLavaChannel(this, x, y, height, { width: 10, midCrack: false });
+      wCh.setDepth(0.6);
+      this._allGraphics.push(wCh);
+    });
+
     this._hero = createPlayer(this, 480, 620);
+    this._hero.setDepth(5);
     this.physics.add.existing(this._hero);
     this._hero.body.setCollideWorldBounds(true);
     this._hero.body.setSize(TILE_SIZE * 0.6, TILE_SIZE * 0.6);
