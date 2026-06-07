@@ -18,6 +18,12 @@ import {
   drawSpikeBase,
   drawVineTuft,
   drawGroundPlant,
+  drawBones,
+  drawBrokenPot,
+  drawSandPile,
+  drawScarab,
+  drawGlyphChip,
+  pickDecor,
 } from '../lib/graphics.js';
 import { showDpad, wireDpad, unwireDpad } from '../lib/dpad.js';
 
@@ -108,6 +114,14 @@ export class GameScene extends Phaser.Scene {
     bakeTileTextures(this);
 
     const levelSeed = levelSeeds[this.levelIndex];
+    const halfT = TILE_SIZE / 2;
+    const shadowG = this.add.graphics().setDepth(0.5);
+    const tileAt = (c, r) => {
+      if (r < 0 || r >= levelData.map.length) return 0;
+      if (c < 0 || c >= levelData.map[r].length) return 0;
+      return levelData.map[r][c];
+    };
+
     levelData.map.forEach((row, rowIdx) => {
       row.forEach((tile, colIdx) => {
         const x = colIdx * TILE_SIZE + TILE_SIZE / 2;
@@ -118,7 +132,41 @@ export class GameScene extends Phaser.Scene {
           const wallImg = this.add.image(x, y, wallTileKey(variant));
           this.walls.add(wallImg);
         } else {
-          this.add.image(x, y, floorTileKey(variant));
+          const floorImg = this.add.image(x, y, floorTileKey(variant));
+
+          const jitterRng = tileRng(levelSeed, colIdx + 1000, rowIdx + 1000);
+          const jr = 0xf0 + Math.floor(jitterRng() * 16);
+          const jg = 0xf0 + Math.floor(jitterRng() * 16);
+          const jb = 0xf0 + Math.floor(jitterRng() * 16);
+          floorImg.setTint((jr << 16) | (jg << 8) | jb);
+
+          const orient = tileRng(levelSeed, colIdx + 2000, rowIdx + 2000)();
+          floorImg.setAngle(Math.floor(orient * 4) * 90);
+          if (orient > 0.5) floorImg.setFlipX(true);
+
+          if (tileAt(colIdx, rowIdx - 1) === 1) {
+            shadowG.fillStyle(0x000000, 0.40);
+            shadowG.fillRect(x - halfT, y - halfT, TILE_SIZE, 4);
+            shadowG.fillStyle(0x000000, 0.20);
+            shadowG.fillRect(x - halfT, y - halfT + 4, TILE_SIZE, 2);
+          }
+          if (tileAt(colIdx - 1, rowIdx) === 1) {
+            shadowG.fillStyle(0x000000, 0.30);
+            shadowG.fillRect(x - halfT, y - halfT, 4, TILE_SIZE);
+            shadowG.fillStyle(0x000000, 0.15);
+            shadowG.fillRect(x - halfT + 4, y - halfT, 2, TILE_SIZE);
+          }
+          if (tileAt(colIdx + 1, rowIdx) === 1) {
+            shadowG.fillStyle(0x000000, 0.30);
+            shadowG.fillRect(x + halfT - 4, y - halfT, 4, TILE_SIZE);
+            shadowG.fillStyle(0x000000, 0.15);
+            shadowG.fillRect(x + halfT - 6, y - halfT, 2, TILE_SIZE);
+          }
+          if (tileAt(colIdx, rowIdx + 1) === 1) {
+            shadowG.fillStyle(0x000000, 0.22);
+            shadowG.fillRect(x - halfT, y + halfT - 3, TILE_SIZE, 3);
+          }
+
           if (tile === 2) {
             this.startCol = colIdx;
             this.startRow = rowIdx;
@@ -155,11 +203,17 @@ export class GameScene extends Phaser.Scene {
           if (levelData.map[rowIdx + dr][colIdx + dc] !== 1) continue;
 
           const decRng = tileRng(levelSeed, colIdx + 500, rowIdx + 500);
-          if (decRng() < 0.25) {
-            if (wallAbove) {
-              drawVineTuft(this, x, y);
-            } else {
-              drawGroundPlant(this, x, y);
+          if (decRng() < 0.35) {
+            const pick = pickDecor(decRng(), wallAbove);
+            const vineRng = tileRng(levelSeed, colIdx + 3000, rowIdx + 3000);
+            switch (pick) {
+              case 'vine': drawVineTuft(this, x, y, vineRng); break;
+              case 'plant': drawGroundPlant(this, x, y); break;
+              case 'bones': drawBones(this, x, y); break;
+              case 'pot': drawBrokenPot(this, x, y); break;
+              case 'sandPile': drawSandPile(this, x, y); break;
+              case 'scarab': drawScarab(this, x, y); break;
+              case 'glyph': drawGlyphChip(this, x, y); break;
             }
           }
           break;

@@ -401,23 +401,112 @@ function paintFloorTile(g, variantIdx) {
   g.fillRect(-23, -23, 46, 46);
   g.fillStyle(0x7a5c35);
   g.fillRect(-21, -21, 42, 42);
-  g.fillStyle(0x8a6c42);
-  g.fillRect(-21, -21, 18, 3);
-  g.fillRect(-21, -21, 3, 18);
+
+  g.fillStyle(0x9a7c52);
+  g.fillRect(-21, -21, 42, 1);
+  g.fillRect(-21, -21, 1, 42);
+  g.fillStyle(0x4a2e14);
+  g.fillRect(-21, 20, 42, 1);
+  g.fillRect(20, -21, 1, 42);
+
+  g.fillStyle(0x3a2810);
+  g.fillRect(-21, -21, 2, 2);
+  g.fillRect(19, -21, 2, 2);
+  g.fillRect(-21, 19, 2, 2);
+  g.fillRect(19, 19, 2, 2);
+
+  const speckRng = mulberry32(0x510C + variantIdx * 9973);
+  for (let i = 0; i < 7; i++) {
+    const sx = -19 + Math.floor(speckRng() * 38);
+    const sy = -19 + Math.floor(speckRng() * 38);
+    g.fillStyle(speckRng() < 0.5 ? 0x3a2810 : 0x9a7c52);
+    g.fillRect(sx, sy, 1, 1);
+  }
 
   if (variantIdx === 1) {
-    g.fillStyle(0x3a2810);
-    g.fillRect(-8, -6, 1, 14);
-    g.fillRect(-8, -6, 8, 1);
-    g.fillRect(-8, 4, 6, 1);
-    g.fillRect(0, -6, 1, 7);
+    g.fillStyle(0x2a1808);
+    g.fillRect(-10, -8, 1, 4);
+    g.fillRect(-9, -4, 1, 4);
+    g.fillRect(-8, 0, 1, 4);
+    g.fillRect(-7, 4, 1, 4);
+    g.fillRect(-6, 8, 1, 3);
+    g.fillRect(-8, 0, 5, 1);
+    g.fillRect(-3, 0, 1, 3);
+    g.fillStyle(0x9a7c52);
+    g.fillRect(-11, -8, 1, 1);
+    g.fillRect(-9, 0, 1, 1);
   } else if (variantIdx === 2) {
-    g.fillStyle(0x3d5c18);
-    g.fillRect(-9, -7, 18, 14);
-    g.fillStyle(0x4a6820);
-    g.fillRect(-7, -5, 14, 10);
+    const tuftRng = mulberry32(0xABCDE);
+    for (let i = 0; i < 5; i++) {
+      const gx = -10 + Math.floor(tuftRng() * 20);
+      const gy = -6 + Math.floor(tuftRng() * 14);
+      g.fillStyle(0x3d5c18);
+      g.fillRect(gx, gy, 2, 3);
+      g.fillStyle(0x5a8020);
+      g.fillRect(gx, gy, 1, 2);
+      g.fillStyle(0x7ab030);
+      g.fillRect(gx, gy, 1, 1);
+    }
+  } else if (variantIdx === 3) {
+    g.fillStyle(0xc8a070);
+    g.fillRect(-18, 14, 6, 2);
+    g.fillRect(-14, 10, 8, 2);
+    g.fillRect(-8, 6, 8, 2);
+    g.fillRect(-2, 2, 8, 2);
+    g.fillRect(4, -2, 8, 2);
+    g.fillRect(10, -6, 6, 2);
+    g.fillStyle(0xe0bc8c);
+    g.fillRect(-14, 10, 4, 1);
+    g.fillRect(-2, 2, 4, 1);
+    g.fillRect(10, -6, 3, 1);
+    const sandRng = mulberry32(0xDEAD);
+    for (let i = 0; i < 6; i++) {
+      const jx = -16 + Math.floor(sandRng() * 30);
+      const jy = -8 + Math.floor(sandRng() * 22);
+      g.fillStyle(0xd4b088);
+      g.fillRect(jx, jy, 1, 1);
+    }
+  } else if (variantIdx === 4) {
+    g.fillStyle(0xe8dcc0);
+    g.fillRect(-8, -4, 1, 9);
+    g.fillRect(-7, -5, 1, 1);
+    g.fillRect(-7, 5, 2, 1);
+    g.fillStyle(0xc8b89c);
+    g.fillRect(-8, 1, 1, 1);
+    g.fillStyle(0xe8dcc0);
+    g.fillRect(2, -8, 9, 1);
+    g.fillRect(1, -9, 1, 1);
+    g.fillRect(11, -9, 1, 1);
+    g.fillRect(4, 6, 7, 1);
+    g.fillRect(4, 5, 1, 1);
+    g.fillStyle(0xfff8e0);
+    g.fillRect(-8, -4, 1, 1);
+    g.fillRect(2, -8, 1, 1);
+  } else if (variantIdx === 5) {
+    g.fillStyle(0x2a1808);
+    g.fillRect(-4, -6, 1, 3);
+    g.fillRect(-4, -3, 8, 1);
+    g.fillRect(3, -6, 1, 3);
+    g.fillRect(-3, -2, 6, 1);
+    g.fillRect(-1, 0, 2, 5);
+    g.fillStyle(0x6a4828);
+    g.fillRect(-4, -6, 1, 1);
+    g.fillRect(3, -6, 1, 1);
+    g.fillRect(-1, 0, 1, 1);
+  } else if (variantIdx === 6) {
+    g.fillStyle(0x5c3d1e);
+    g.fillRect(-7, -7, 14, 14);
+    g.fillStyle(0x8a6c42);
+    g.fillRect(-6, -6, 12, 12);
+    g.fillStyle(0xaa8a5e);
+    g.fillRect(-6, -6, 12, 1);
+    g.fillRect(-6, -6, 1, 12);
+    g.fillStyle(0x4a2e14);
+    g.fillRect(-6, 5, 12, 1);
+    g.fillRect(5, -6, 1, 12);
     g.fillStyle(0x3a2810);
-    g.fillRect(-6, -4, 12, 1);
+    g.fillRect(-3, -2, 1, 1);
+    g.fillRect(2, 1, 1, 1);
   }
 }
 
@@ -428,9 +517,13 @@ export function wallTileKey(variantValue) {
 }
 
 export function floorTileKey(variantValue) {
-  if (variantValue < 0.4) return 'floor-tile-0';
-  if (variantValue < 0.75) return 'floor-tile-1';
-  return 'floor-tile-2';
+  if (variantValue < 0.55) return 'floor-tile-0';
+  if (variantValue < 0.72) return 'floor-tile-1';
+  if (variantValue < 0.82) return 'floor-tile-2';
+  if (variantValue < 0.90) return 'floor-tile-3';
+  if (variantValue < 0.95) return 'floor-tile-4';
+  if (variantValue < 0.985) return 'floor-tile-5';
+  return 'floor-tile-6';
 }
 
 // Bake all 3 wall + 3 floor variants into 48x48 textures once.
@@ -448,7 +541,7 @@ export function bakeTileTextures(scene) {
   };
 
   for (let i = 0; i < 3; i++) bake(`wall-tile-${i}`, paintWallTile, i);
-  for (let i = 0; i < 3; i++) bake(`floor-tile-${i}`, paintFloorTile, i);
+  for (let i = 0; i < 7; i++) bake(`floor-tile-${i}`, paintFloorTile, i);
 }
 
 export function drawWallTile(scene, x, y, rng) {
@@ -464,7 +557,13 @@ export function drawWallTile(scene, x, y, rng) {
 export function drawFloorTile(scene, x, y, rng) {
   const g = scene.add.graphics();
   const v = rng();
-  const idx = v < 0.4 ? 0 : v < 0.75 ? 1 : 2;
+  const idx =
+    v < 0.55 ? 0 :
+    v < 0.72 ? 1 :
+    v < 0.82 ? 2 :
+    v < 0.90 ? 3 :
+    v < 0.95 ? 4 :
+    v < 0.985 ? 5 : 6;
   paintFloorTile(g, idx);
   g.x = x;
   g.y = y;
@@ -553,30 +652,47 @@ export function drawBossFloorTile(scene, x, y, variantIdx) {
   return scene.add.image(x, y, `boss-floor-${variantIdx}`);
 }
 
-function paintVineTuft(g) {
-  const strands = [
-    { sx: -10, len: 14 },
-    { sx: -4, len: 19 },
-    { sx: 3, len: 12 },
-    { sx: 9, len: 17 },
-  ];
+function paintVineTuftVariant(g, seed) {
+  const rng = mulberry32(seed >>> 0);
+  const count = 3 + Math.floor(rng() * 4);
+  const used = [];
+  for (let i = 0; i < count; i++) {
+    let sx;
+    let tries = 0;
+    do {
+      sx = -13 + Math.floor(rng() * 26);
+      tries++;
+    } while (used.some((u) => Math.abs(u - sx) < 3) && tries < 5);
+    used.push(sx);
 
-  strands.forEach(({ sx, len }) => {
+    const len = 10 + Math.floor(rng() * 13);
     g.fillStyle(0x2a3d10);
     g.fillRect(sx, -24, 2, len);
-    const lA = Math.floor(len * 0.4);
+
+    const lA = Math.floor(len * (0.3 + rng() * 0.2));
     g.fillStyle(0x3d5c18);
     g.fillRect(sx - 3, -24 + lA, 6, 3);
     g.fillStyle(0x5a8020);
     g.fillRect(sx - 2, -24 + lA, 4, 2);
     g.fillStyle(0x7ab030);
     g.fillRect(sx - 2, -24 + lA, 2, 1);
-    const lB = Math.floor(len * 0.8);
-    g.fillStyle(0x3d5c18);
-    g.fillRect(sx - 2, -24 + lB, 5, 3);
-    g.fillStyle(0x5a8020);
-    g.fillRect(sx - 1, -24 + lB, 3, 2);
-  });
+
+    if (rng() < 0.75) {
+      const lB = Math.floor(len * (0.65 + rng() * 0.2));
+      g.fillStyle(0x3d5c18);
+      g.fillRect(sx - 2, -24 + lB, 5, 3);
+      g.fillStyle(0x5a8020);
+      g.fillRect(sx - 1, -24 + lB, 3, 2);
+      g.fillStyle(0x7ab030);
+      g.fillRect(sx - 1, -24 + lB, 1, 1);
+    }
+
+    if (rng() < 0.4) {
+      const lC = Math.floor(len * 0.92);
+      g.fillStyle(0x3d5c18);
+      g.fillRect(sx - 1, -24 + lC, 3, 2);
+    }
+  }
 }
 
 function paintGroundPlant(g) {
@@ -606,8 +722,178 @@ function paintGroundPlant(g) {
   g.fillRect(7, -8, 3, 1);
 }
 
-export function drawVineTuft(scene, x, y) {
-  return scene.add.image(x, y, DECOR_KEYS.vine);
+function paintBones(g) {
+  g.fillStyle(0xe8dcc0);
+  g.fillRect(-14, -3, 12, 2);
+  g.fillRect(-15, -4, 1, 1);
+  g.fillRect(-15, -1, 1, 1);
+  g.fillRect(-2, -4, 1, 1);
+  g.fillRect(-2, -1, 1, 1);
+  g.fillStyle(0xc8b89c);
+  g.fillRect(-14, -1, 12, 1);
+
+  g.fillStyle(0xe8dcc0);
+  g.fillRect(-6, 7, 14, 2);
+  g.fillRect(-7, 6, 1, 1);
+  g.fillRect(-7, 9, 1, 1);
+  g.fillRect(8, 6, 1, 1);
+  g.fillRect(8, 9, 1, 1);
+  g.fillStyle(0xc8b89c);
+  g.fillRect(-6, 9, 14, 1);
+
+  g.fillStyle(0xe8dcc0);
+  g.fillRect(2, -11, 9, 7);
+  g.fillRect(3, -12, 7, 1);
+  g.fillStyle(0xc8b89c);
+  g.fillRect(2, -5, 9, 1);
+  g.fillStyle(0x2a1808);
+  g.fillRect(3, -9, 2, 2);
+  g.fillRect(8, -9, 2, 2);
+  g.fillRect(5, -6, 3, 1);
+  g.fillStyle(0xfff8e0);
+  g.fillRect(2, -11, 1, 1);
+  g.fillRect(3, -12, 1, 1);
+}
+
+function paintBrokenPot(g) {
+  g.fillStyle(0x4a2008);
+  g.fillRect(-12, 0, 24, 11);
+  g.fillStyle(0x8a3818);
+  g.fillRect(-11, 1, 22, 9);
+  g.fillStyle(0xb04828);
+  g.fillRect(-11, 1, 22, 3);
+  g.fillStyle(0xc85838);
+  g.fillRect(-11, 1, 22, 1);
+  g.fillStyle(0x1a0a04);
+  g.fillRect(-9, 3, 18, 5);
+
+  g.fillStyle(0x4a2008);
+  g.fillRect(8, -9, 8, 7);
+  g.fillStyle(0xa84830);
+  g.fillRect(9, -8, 6, 5);
+  g.fillStyle(0xc85838);
+  g.fillRect(9, -8, 6, 1);
+
+  g.fillStyle(0x4a2008);
+  g.fillRect(-14, -3, 5, 4);
+  g.fillStyle(0x8a3818);
+  g.fillRect(-13, -2, 3, 2);
+}
+
+function paintSandPile(g) {
+  g.fillStyle(0x6a4828);
+  g.fillEllipse(0, 6, 32, 10);
+  g.fillStyle(0x8a6c42);
+  g.fillEllipse(0, 4, 26, 9);
+  g.fillStyle(0xc8a070);
+  g.fillEllipse(0, 2, 20, 7);
+  g.fillStyle(0xe0bc8c);
+  g.fillEllipse(0, 0, 12, 4);
+  g.fillStyle(0xf0d8a8);
+  g.fillEllipse(0, -1, 5, 2);
+}
+
+function paintScarab(g) {
+  g.fillStyle(0x0a0a0a);
+  g.fillEllipse(0, 1, 20, 16);
+  g.fillStyle(0x1a1a1a);
+  g.fillEllipse(0, 0, 18, 14);
+  g.fillStyle(0x2a2a2a);
+  g.fillRect(-7, -5, 6, 10);
+  g.fillRect(1, -5, 6, 10);
+  g.fillStyle(0x0a0a0a);
+  g.fillRect(-1, -6, 2, 12);
+
+  g.fillStyle(0x1a1a1a);
+  g.fillRect(-13, -4, 5, 1);
+  g.fillRect(-13, 0, 5, 1);
+  g.fillRect(-13, 4, 5, 1);
+  g.fillRect(8, -4, 5, 1);
+  g.fillRect(8, 0, 5, 1);
+  g.fillRect(8, 4, 5, 1);
+
+  g.fillStyle(0x2a2a2a);
+  g.fillEllipse(0, -8, 8, 5);
+  g.fillStyle(0xd4a000);
+  g.fillRect(-2, -9, 1, 1);
+  g.fillRect(1, -9, 1, 1);
+
+  g.fillStyle(0x4a4a4a);
+  g.fillRect(-4, -3, 2, 1);
+  g.fillRect(3, -3, 2, 1);
+}
+
+function paintGlyphChip(g) {
+  g.fillStyle(0x4a2e14);
+  g.fillRect(-9, -12, 18, 24);
+  g.fillStyle(0x6a4828);
+  g.fillRect(-9, -12, 18, 1);
+  g.fillRect(-9, -12, 1, 24);
+  g.fillStyle(0x2a1808);
+  g.fillRect(-9, 11, 18, 1);
+  g.fillRect(8, -12, 1, 24);
+
+  g.fillStyle(0x1a0a04);
+  g.fillRect(-3, -10, 6, 1);
+  g.fillRect(-1, -10, 2, 5);
+  g.fillRect(-4, -7, 8, 1);
+
+  g.fillRect(-5, -2, 10, 1);
+  g.fillRect(-5, -2, 1, 3);
+  g.fillRect(4, -2, 1, 3);
+  g.fillRect(-2, 0, 1, 1);
+  g.fillRect(2, 0, 1, 1);
+
+  g.fillRect(-5, 6, 10, 1);
+  g.fillRect(-5, 8, 10, 1);
+  g.fillRect(-3, 7, 1, 1);
+  g.fillRect(2, 7, 1, 1);
+
+  g.fillStyle(0x6a4828);
+  g.fillRect(-3, -10, 1, 1);
+  g.fillRect(-5, -2, 1, 1);
+  g.fillRect(-5, 6, 1, 1);
+}
+
+export function drawBones(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.bones);
+}
+
+export function drawBrokenPot(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.pot);
+}
+
+export function drawSandPile(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.sandPile);
+}
+
+export function drawScarab(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.scarab);
+}
+
+export function drawGlyphChip(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.glyph);
+}
+
+export function pickDecor(rngVal, wallAbove) {
+  if (wallAbove) {
+    if (rngVal < 0.60) return 'vine';
+    if (rngVal < 0.75) return 'bones';
+    if (rngVal < 0.90) return 'glyph';
+    return 'pot';
+  }
+  if (rngVal < 0.35) return 'plant';
+  if (rngVal < 0.55) return 'bones';
+  if (rngVal < 0.70) return 'pot';
+  if (rngVal < 0.85) return 'sandPile';
+  if (rngVal < 0.95) return 'scarab';
+  return 'glyph';
+}
+
+export function drawVineTuft(scene, x, y, rng) {
+  const v = rng ? rng() : 0;
+  const idx = v < 0.34 ? 0 : v < 0.67 ? 1 : 2;
+  return scene.add.image(x, y, `decor-vine-${idx}`);
 }
 
 export function drawGroundPlant(scene, x, y) {
@@ -615,12 +901,17 @@ export function drawGroundPlant(scene, x, y) {
 }
 
 export const DECOR_KEYS = {
-  vine: 'decor-vine',
+  vine: 'decor-vine-0',
   plant: 'decor-plant',
   flameNozzle: 'decor-flame-nozzle',
   spikeBase: 'decor-spike-base',
   spike: 'decor-spike',
   mummy: 'decor-mummy',
+  bones: 'decor-bones',
+  pot: 'decor-pot',
+  sandPile: 'decor-sand-pile',
+  scarab: 'decor-scarab',
+  glyph: 'decor-glyph',
 };
 
 const DECOR_BAKE_SIZE = 64;
@@ -634,12 +925,19 @@ export function bakeDecorTextures(scene) {
     g.generateTexture(key, DECOR_BAKE_SIZE, DECOR_BAKE_SIZE);
     g.destroy();
   };
-  bake(DECOR_KEYS.vine, paintVineTuft);
+  bake('decor-vine-0', (g) => paintVineTuftVariant(g, 0x10F1));
+  bake('decor-vine-1', (g) => paintVineTuftVariant(g, 0x20F2));
+  bake('decor-vine-2', (g) => paintVineTuftVariant(g, 0x30F3));
   bake(DECOR_KEYS.plant, paintGroundPlant);
   bake(DECOR_KEYS.flameNozzle, paintFlameNozzle);
   bake(DECOR_KEYS.spikeBase, paintSpikeBase);
   bake(DECOR_KEYS.spike, paintSpike);
   bake(DECOR_KEYS.mummy, paintMummy);
+  bake(DECOR_KEYS.bones, paintBones);
+  bake(DECOR_KEYS.pot, paintBrokenPot);
+  bake(DECOR_KEYS.sandPile, paintSandPile);
+  bake(DECOR_KEYS.scarab, paintScarab);
+  bake(DECOR_KEYS.glyph, paintGlyphChip);
 }
 
 export function drawLavaGlow(scene, x, y, w, h) {
