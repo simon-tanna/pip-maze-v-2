@@ -1,13 +1,16 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
-import { LEVEL_CONFIGS } from '../lib/generator.js';
+import { LEVEL_CONFIGS, mulberry32 } from '../lib/generator.js';
 import {
   CHARACTER_CONFIGS,
   createPlayer,
   drawPillar,
+  drawPillarRunes,
   drawLavaGlow,
   drawLavaChannel,
   drawLavaPool,
+  bakeBossFloorTextures,
+  drawBossFloorTile,
 } from '../lib/graphics.js';
 
 const TINT_RED = 0xff0000;
@@ -52,16 +55,24 @@ export class BossScene extends Phaser.Scene {
     this._domHandlers    = [];
 
     this.add.rectangle(480, 360, 960, 720, 0x1a1208);
+
+    bakeBossFloorTextures(this);
+    const floorRng = mulberry32(0xB055F100);
     for (let row = 0; row < 15; row++) {
       for (let col = 0; col < 20; col++) {
-        const shade = ((row + col) % 2 === 0) ? 0x2a1e10 : 0x241a0c;
-        this.add.rectangle(
+        const r = floorRng();
+        const variant = r < 0.80 ? 0
+                      : r < 0.90 ? 1
+                      : r < 0.97 ? 2
+                      : 3;
+        const tile = drawBossFloorTile(
+          this,
           col * TILE_SIZE + TILE_SIZE / 2,
           row * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 2,
-          TILE_SIZE - 2,
-          shade,
+          variant,
         );
+        tile.setDepth(0.1);
+        this._allGraphics.push(tile);
       }
     }
 
@@ -82,6 +93,10 @@ export class BossScene extends Phaser.Scene {
       const pg = drawPillar(this, x, y);
       pg.setDepth(0.4);
       this._allGraphics.push(pg);
+
+      const runes = drawPillarRunes(this, x, y, 0x90FF0000 ^ (x * 31 + y));
+      runes.setDepth(0.5);
+      this._allGraphics.push(runes);
 
       const channel = drawLavaChannel(this, x, y, 96, { width: 8, midCrack: true });
       channel.setDepth(0.6);

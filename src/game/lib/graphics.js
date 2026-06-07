@@ -3,6 +3,7 @@
 // and returns the created Graphics object. No game logic here — only fillRect calls.
 
 import { TILE_SIZE } from './constants.js';
+import { mulberry32 } from './generator.js';
 
 // Single source of truth for all playable character sprite sheets.
 export const CHARACTER_CONFIGS = {
@@ -470,6 +471,88 @@ export function drawFloorTile(scene, x, y, rng) {
   return g;
 }
 
+function paintBossFloorTile(g, variantIdx) {
+  g.fillStyle(0x0a0604, 1);
+  g.fillRect(-24, -24, 48, 48);
+  g.fillStyle(0x1a1208, 1);
+  g.fillRect(-23, -23, 46, 46);
+  g.fillStyle(0x4a3828, 1);
+  g.fillRect(-22, -22, 44, 44);
+  g.fillStyle(0x6a5440, 1);
+  g.fillRect(-22, -22, 44, 2);
+  g.fillRect(-22, -22, 2, 44);
+  g.fillStyle(0x3a2818, 1);
+  g.fillRect(-22, 20, 44, 2);
+  g.fillRect(20, -22, 2, 44);
+
+  if (variantIdx === 1) {
+    g.fillStyle(0x1a0e06, 1);
+    g.fillRect(-12, -10, 2, 2);
+    g.fillRect(-10, -8,  2, 2);
+    g.fillRect(-8,  -6,  2, 3);
+    g.fillRect(-6,  -3,  2, 3);
+    g.fillRect(-4,   0,  2, 3);
+    g.fillRect(-2,   3,  2, 3);
+    g.fillRect(0,    6,  2, 3);
+    g.fillRect(2,    9,  2, 2);
+  } else if (variantIdx === 2) {
+    g.fillStyle(0x2a3d10, 1);
+    g.fillRect(-22, 8,  8, 14);
+    g.fillRect(-14, 14, 6, 8);
+    g.fillStyle(0x3d5c18, 1);
+    g.fillRect(-20, 10, 5, 10);
+    g.fillRect(-12, 16, 4, 5);
+    g.fillStyle(0x5a8020, 1);
+    g.fillRect(-19, 11, 3, 6);
+    g.fillRect(-11, 17, 2, 3);
+    g.fillStyle(0x7ab030, 1);
+    g.fillRect(-18, 12, 2, 2);
+    g.fillStyle(0x2a3d10, 1);
+    g.fillRect(14, -22, 6, 8);
+    g.fillStyle(0x3d5c18, 1);
+    g.fillRect(15, -21, 4, 6);
+    g.fillStyle(0x5a8020, 1);
+    g.fillRect(16, -20, 2, 3);
+  } else if (variantIdx === 3) {
+    g.fillStyle(0x2a1408, 1);
+    g.fillRect(-7, -8, 14, 2);
+    g.fillRect(-7, -8, 2, 16);
+    g.fillRect( 5, -8, 2, 16);
+    g.fillRect(-7,  6, 14, 2);
+    g.fillRect(-1, -4, 2, 12);
+    g.fillRect(-4,  0, 8,  2);
+    g.fillStyle(0xcc6600, 1);
+    g.fillRect(-6, -7, 12, 1);
+    g.fillRect(-6, -7, 1, 14);
+    g.fillRect( 5, -7, 1, 14);
+    g.fillRect(-6,  6, 12, 1);
+    g.fillRect( 0, -3, 1, 10);
+    g.fillRect(-3,  1, 6,  1);
+    g.fillStyle(0xffaa33, 1);
+    g.fillRect(-6, -7, 1, 1);
+    g.fillRect( 5, -7, 1, 1);
+    g.fillRect(-6,  6, 1, 1);
+    g.fillRect( 5,  6, 1, 1);
+  }
+}
+
+export function bakeBossFloorTextures(scene) {
+  const bake = (key, variantIdx) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.add.graphics();
+    g.translateCanvas(TILE_SIZE / 2, TILE_SIZE / 2);
+    paintBossFloorTile(g, variantIdx);
+    g.generateTexture(key, TILE_SIZE, TILE_SIZE);
+    g.destroy();
+  };
+
+  for (let i = 0; i < 4; i++) bake(`boss-floor-${i}`, i);
+}
+
+export function drawBossFloorTile(scene, x, y, variantIdx) {
+  return scene.add.image(x, y, `boss-floor-${variantIdx}`);
+}
+
 function paintVineTuft(g) {
   const strands = [
     { sx: -10, len: 14 },
@@ -767,5 +850,61 @@ export function drawPillar(scene, x, y) {
 
   g.x = x;
   g.y = y;
+  return g;
+}
+
+const RUNE_COLORS = [0x00ffff, 0xff00ff, 0xff2030, 0x39ff14];
+
+const RUNE_GLYPHS = [
+  (g, cx, cy) => { g.lineBetween(cx, cy - 6, cx, cy + 6); },
+  (g, cx, cy) => { g.lineBetween(cx - 5, cy - 6, cx + 5, cy + 6); g.lineBetween(cx + 5, cy - 6, cx - 5, cy + 6); },
+  (g, cx, cy) => { g.lineBetween(cx - 4, cy - 6, cx - 4, cy + 6); g.lineBetween(cx + 4, cy - 6, cx + 4, cy + 6); g.lineBetween(cx - 4, cy - 2, cx + 4, cy + 2); },
+  (g, cx, cy) => { g.lineBetween(cx + 3, cy - 6, cx - 3, cy); g.lineBetween(cx - 3, cy, cx + 3, cy + 6); },
+  (g, cx, cy) => { g.lineBetween(cx, cy - 6, cx, cy + 6); g.lineBetween(cx, cy - 6, cx - 4, cy - 2); g.lineBetween(cx, cy - 6, cx + 4, cy - 2); },
+  (g, cx, cy) => { g.lineBetween(cx - 5, cy + 6, cx - 5, cy - 6); g.lineBetween(cx + 5, cy + 6, cx + 5, cy - 6); g.lineBetween(cx - 5, cy - 6, cx, cy + 2); g.lineBetween(cx + 5, cy - 6, cx, cy + 2); },
+  (g, cx, cy) => { g.lineBetween(cx - 4, cy - 6, cx - 4, cy + 6); g.lineBetween(cx - 4, cy - 6, cx + 3, cy - 3); g.lineBetween(cx + 3, cy - 3, cx - 4, cy); g.lineBetween(cx - 4, cy, cx + 4, cy + 6); },
+  (g, cx, cy) => { g.lineBetween(cx, cy - 6, cx, cy + 6); g.lineBetween(cx, cy - 3, cx + 5, cy - 6); g.lineBetween(cx, cy + 1, cx + 5, cy - 2); },
+];
+
+export function drawPillarRunes(scene, x, y, seed) {
+  const rng = mulberry32((seed >>> 0) || 0xDEADBEEF);
+  const g = scene.add.graphics();
+
+  const count = 2 + Math.floor(rng() * 3);
+  const topY = -28;
+  const botY = 28;
+  const step = (botY - topY) / count;
+
+  for (let i = 0; i < count; i++) {
+    const cy = topY + step * (i + 0.5);
+    const side = rng() < 0.5 ? -1 : 1;
+    const cx = side * 28 + Math.floor((rng() - 0.5) * 4);
+    const color = RUNE_COLORS[Math.floor(rng() * RUNE_COLORS.length)];
+    const glyph = RUNE_GLYPHS[Math.floor(rng() * RUNE_GLYPHS.length)];
+
+    g.fillStyle(color, 0.10);
+    g.fillCircle(cx, cy, 11);
+    g.fillStyle(color, 0.18);
+    g.fillCircle(cx, cy, 8);
+    g.fillStyle(color, 0.30);
+    g.fillCircle(cx, cy, 5);
+
+    g.lineStyle(2, color, 1);
+    glyph(g, cx, cy);
+  }
+
+  g.x = x;
+  g.y = y;
+
+  scene.tweens.add({
+    targets: g,
+    alpha: { from: 0.55, to: 1 },
+    duration: 900 + Math.floor(rng() * 500),
+    delay: Math.floor(rng() * 600),
+    yoyo: true,
+    repeat: -1,
+    ease: 'Sine.easeInOut',
+  });
+
   return g;
 }
