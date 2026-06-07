@@ -1,4 +1,4 @@
-import { AUTO, Game, Scale } from 'phaser';
+import { Game, Scale, WEBGL } from 'phaser';
 import { BootScene } from './scenes/Boot.js';
 import { TitleScene } from './scenes/Title.js';
 import { GameScene } from './scenes/Game.js';
@@ -7,7 +7,7 @@ import { TutorialScene } from './scenes/Tutorial.js';
 import { BossScene } from './scenes/Boss.js';
 
 const config: Phaser.Types.Core.GameConfig = {
-    type: AUTO,
+    type: WEBGL,
     parent: 'game-container',
     backgroundColor: '#2c1810',
     pixelArt: true,
@@ -16,10 +16,6 @@ const config: Phaser.Types.Core.GameConfig = {
         autoCenter: Scale.CENTER_BOTH,
         width: 960,
         height: 720,
-    },
-    physics: {
-        default: 'arcade',
-        arcade: { debug: false },
     },
     scene: [
         BootScene,

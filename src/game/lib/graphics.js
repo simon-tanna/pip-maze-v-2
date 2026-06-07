@@ -56,8 +56,7 @@ export function drawKeyIcon(scene, x, y) {
   return img;
 }
 
-export function drawFlameNozzle(scene, x, y) {
-  const g = scene.add.graphics();
+function paintFlameNozzle(g) {
   const baseColor = 0x443322;
   const highlight = 0x887766;
   const pit = 0x1a1a1a;
@@ -76,14 +75,9 @@ export function drawFlameNozzle(scene, x, y) {
 
   g.fillStyle(0x332211);
   g.fillRect(-12, 17, 24, 1);
-
-  g.x = x;
-  g.y = y;
-  return g;
 }
 
-export function drawSpikeBase(scene, x, y) {
-  const g = scene.add.graphics();
+function paintSpikeBase(g) {
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
       const cx = -16 + col * 16;
@@ -94,13 +88,9 @@ export function drawSpikeBase(scene, x, y) {
       g.fillCircle(cx, cy, 2.5);
     }
   }
-  g.x = x;
-  g.y = y;
-  return g;
 }
 
-export function drawSpike(scene, x, y) {
-  const g = scene.add.graphics();
+function paintSpike(g) {
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
       const cx = -16 + col * 16;
@@ -151,9 +141,18 @@ export function drawSpike(scene, x, y) {
       g.fillRect(cx - 1, tip, 2, 3);
     }
   }
-  g.x = x;
-  g.y = y;
-  return g;
+}
+
+export function drawFlameNozzle(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.flameNozzle);
+}
+
+export function drawSpikeBase(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.spikeBase);
+}
+
+export function drawSpike(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.spike);
 }
 
 export function createFlame(scene, x, y) {
@@ -276,9 +275,7 @@ export function drawBlade(scene, pivotX, pivotY) {
   return g;
 }
 
-export function drawMummy(scene, x, y) {
-  const g = scene.add.graphics();
-
+function paintMummy(g) {
   const colorSkin = 0x3d2b1f;
   const colorWrap = 0xd2b48c;
   const colorWrapLight = 0xe8dcc8;
@@ -349,10 +346,10 @@ export function drawMummy(scene, x, y) {
   g.fillStyle(0xffffff);
   g.fillRect(-4.5, -12.5, 1, 1);
   g.fillRect(4.5, -12.5, 1, 1);
+}
 
-  g.x = x;
-  g.y = y;
-  return g;
+export function drawMummy(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.mummy);
 }
 
 function paintWallTile(g, variantIdx) {
@@ -473,9 +470,7 @@ export function drawFloorTile(scene, x, y, rng) {
   return g;
 }
 
-export function drawVineTuft(scene, x, y) {
-  const g = scene.add.graphics();
-
+function paintVineTuft(g) {
   const strands = [
     { sx: -10, len: 14 },
     { sx: -4, len: 19 },
@@ -499,15 +494,9 @@ export function drawVineTuft(scene, x, y) {
     g.fillStyle(0x5a8020);
     g.fillRect(sx - 1, -24 + lB, 3, 2);
   });
-
-  g.x = x;
-  g.y = y;
-  return g;
 }
 
-export function drawGroundPlant(scene, x, y) {
-  const g = scene.add.graphics();
-
+function paintGroundPlant(g) {
   g.fillStyle(0x2a3d10);
   g.fillRect(-2, -14, 4, 14);
   g.fillStyle(0x3d5c18);
@@ -532,10 +521,42 @@ export function drawGroundPlant(scene, x, y) {
   g.fillRect(6, -12, 2, 3);
   g.fillStyle(0x7ab030);
   g.fillRect(7, -8, 3, 1);
+}
 
-  g.x = x;
-  g.y = y;
-  return g;
+export function drawVineTuft(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.vine);
+}
+
+export function drawGroundPlant(scene, x, y) {
+  return scene.add.image(x, y, DECOR_KEYS.plant);
+}
+
+export const DECOR_KEYS = {
+  vine: 'decor-vine',
+  plant: 'decor-plant',
+  flameNozzle: 'decor-flame-nozzle',
+  spikeBase: 'decor-spike-base',
+  spike: 'decor-spike',
+  mummy: 'decor-mummy',
+};
+
+const DECOR_BAKE_SIZE = 64;
+
+export function bakeDecorTextures(scene) {
+  const bake = (key, paint) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.add.graphics();
+    g.translateCanvas(DECOR_BAKE_SIZE / 2, DECOR_BAKE_SIZE / 2);
+    paint(g);
+    g.generateTexture(key, DECOR_BAKE_SIZE, DECOR_BAKE_SIZE);
+    g.destroy();
+  };
+  bake(DECOR_KEYS.vine, paintVineTuft);
+  bake(DECOR_KEYS.plant, paintGroundPlant);
+  bake(DECOR_KEYS.flameNozzle, paintFlameNozzle);
+  bake(DECOR_KEYS.spikeBase, paintSpikeBase);
+  bake(DECOR_KEYS.spike, paintSpike);
+  bake(DECOR_KEYS.mummy, paintMummy);
 }
 
 export function drawLavaGlow(scene, x, y, w, h) {

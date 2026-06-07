@@ -29,8 +29,9 @@ Scenes live in `src/game/scenes/` as `Boot.js`, `Title.js`, `Game.js`, `Win.js`,
 1. **BootScene** — loads sprite sheets and key/chest images, registers idle+walk animations for each direction per character.
 2. **TitleScene** — DOOM MAZE title, character carousel (Pip / John / Ellen), Tutorial button. Resets per-level seeds on entry.
 3. **GameScene** — main gameplay. 40×15 tile world; camera follows Pip. Reads procedural level from `lib/generator.js`, validates start→key→chest BFS path, spawns flame/blade/mummy/spike hazards from `lib/graphics.js`.
-4. **WinScene** — disco-ball victory screen; "Tap to continue" advances level, or "Play again" if all 9 levels complete.
+4. **WinScene** — disco-ball victory screen; "Tap to continue" advances level (`GameScene` with `level+1`). After level 9 (final `LEVEL_CONFIGS` entry) it routes to `BossScene` instead.
 5. **TutorialScene** — 3 phases (blade, flame, spike), each with an auto-demo then player practice.
+6. **BossScene** — boss arena (pillars + lava). Entered from `WinScene` after final level (`Win.js:111`) or directly from Title (`Title.js:134`). Hero HP and boss HP both 3; uses i-frame `_heroInvincible`/`_bossInvincible` flags.
 
 ## Module layout
 
@@ -38,7 +39,7 @@ Scenes live in `src/game/scenes/` as `Boot.js`, `Title.js`, `Game.js`, `Win.js`,
 - `src/game/lib/dpad.js` — `hideDpad`/`showDpad` and `wireDpadButtons(scene, handler)`; all `#dpad` DOM access goes through here
 - `src/game/lib/animation-registry.js` — `registerCharacterAnimations(scene)`; called from `BootScene` to register idle+walk per direction per character
 - `src/game/lib/generator.js` — `mulberry32`, `randInt`, `shuffle`, `bfsPath`, `tileRng`, `LEVEL_CONFIGS`, `generateLevel`
-- `src/game/lib/graphics.js` — `CHARACTER_CONFIGS`, `createPlayer`, and all pixel-art draw functions (walls, floors, vines, plants, chest, key, flame, blade, mummy, spikes)
+- `src/game/lib/graphics.js` — `CHARACTER_CONFIGS`, `createPlayer`, and all pixel-art draw functions (walls, floors, vines, plants, chest, key, flame, blade, mummy, spikes, plus boss-arena `drawPillar`, `drawLavaGlow`, `drawLavaChannel`, `drawLavaPool`)
 - `src/game/lib/tutorial-config.js` — the three `TUTORIAL_CONFIGS` maps
 
 Helper modules and scenes are `.js`. Vite + the template's `tsconfig.json` (with `allowImportingTsExtensions` and bundler module resolution) handles both `.ts` and `.js` side-by-side.

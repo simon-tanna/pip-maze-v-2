@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_CONFIGS } from '../lib/graphics.js';
+import { CHARACTER_CONFIGS, bakeTileTextures, bakeDecorTextures } from '../lib/graphics.js';
 import { registerCharacterAnimations } from '../lib/animation-registry.js';
 
 export class BootScene extends Phaser.Scene {
@@ -36,6 +36,8 @@ export class BootScene extends Phaser.Scene {
   create() {
     registerCharacterAnimations(this);
     this._registerTrollFramesAndAnims();
+    bakeTileTextures(this);
+    bakeDecorTextures(this);
 
     const start = () => this.scene.start('TitleScene');
 

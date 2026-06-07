@@ -14,7 +14,10 @@ const TINT_RED = 0xff0000;
 
 export class BossScene extends Phaser.Scene {
   constructor() {
-    super('BossScene');
+    super({
+      key: 'BossScene',
+      physics: { default: 'arcade', arcade: { debug: false } },
+    });
   }
 
   create() {
