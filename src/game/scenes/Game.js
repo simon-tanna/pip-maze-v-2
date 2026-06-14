@@ -275,6 +275,7 @@ export class GameScene extends Phaser.Scene {
         if (k.pulseTween) k.pulseTween.stop();
       });
       this._bladeTweens.forEach((t) => t.stop());
+      this.mummyList.forEach((m) => { if (m.timer) m.timer.remove(); });
       this._mummyGraphics.forEach((g) => this.tweens.killTweensOf(g));
       this._spikeGraphics.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
       this._spikeGlows.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
@@ -425,47 +426,206 @@ export class GameScene extends Phaser.Scene {
     const g = drawMummy(this, startX, startY);
     this._mummyGraphics.push(g);
 
-    const mummyObj = { col: trap.col, row: trap.row, visuals: [g] };
+    const originalSpan = trap.patrolCols[1] - trap.patrolCols[0];
+
+    const mummyObj = {
+      col: trap.col,
+      row: trap.row,
+      visuals: [g],
+      dead: false,
+      mode: 'patrol',
+      direction: 1,
+      moving: false,
+      patrolMinCol: trap.patrolCols[0],
+      patrolMaxCol: trap.patrolCols[1],
+      lastSeenCol: trap.col,
+      lastSeenRow: trap.row,
+      timer: null,
+    };
     this.mummyList.push(mummyObj);
 
-    const [minCol, maxCol] = trap.patrolCols;
-    let direction = 1;
-    let mummyMoving = false;
+    const switchMode = (newMode) => {
+      mummyObj.timer.remove();
+      mummyObj.mode = newMode;
+      mummyObj.timer = this.time.addEvent({
+        delay: newMode === 'chase' ? 450 : 600,
+        callback: tick,
+        loop: true,
+      });
+    };
 
-    const stepMummy = () => {
-      if (mummyMoving) return;
-      const nextCol = mummyObj.col + direction;
-
-      if (
-        nextCol < minCol ||
-        nextCol > maxCol ||
-        this.map[mummyObj.row][nextCol] === 1
-      ) {
-        direction *= -1;
-        return;
-      }
-
-      mummyObj.col = nextCol;
-      mummyMoving = true;
-
+    const moveMummy = (dCol, dRow) => {
+      mummyObj.col += dCol;
+      mummyObj.row += dRow;
+      mummyObj.moving = true;
+      const duration = mummyObj.mode === 'chase' ? 300 : 400;
       const targetX = mummyObj.col * TILE_SIZE + TILE_SIZE / 2;
+      const targetY = mummyObj.row * TILE_SIZE + TILE_SIZE / 2;
       this.tweens.add({
         targets: g,
         x: targetX,
-        duration: 400,
-        ease: "Linear",
+        y: targetY,
+        duration,
+        ease: 'Linear',
         onComplete: () => {
-          mummyMoving = false;
+          mummyObj.moving = false;
+          if (this._isTileLethalForMummy(mummyObj.col, mummyObj.row)) {
+            this._killMummy(mummyObj);
+            return;
+          }
           this.checkHazards();
         },
       });
     };
 
-    mummyObj.timer = this.time.addEvent({
-      delay: 600,
-      callback: stepMummy,
-      loop: true,
+    const tick = () => {
+      if (mummyObj.dead || mummyObj.moving) return;
+
+      const visible = this._mummyHasLineOfSight(mummyObj);
+      if (visible) {
+        mummyObj.lastSeenCol = this.pipCol;
+        mummyObj.lastSeenRow = this.pipRow;
+        if (mummyObj.mode === 'patrol') {
+          switchMode('chase');
+          return;
+        }
+      }
+
+      if (mummyObj.mode === 'chase') {
+        const atLastSeen = mummyObj.col === mummyObj.lastSeenCol && mummyObj.row === mummyObj.lastSeenRow;
+        if (atLastSeen && !visible) {
+          // recompute patrol bounds centred on current position
+          const r = mummyObj.row;
+          let wallLeft = 0;
+          for (let c = mummyObj.col - 1; c >= 0; c--) {
+            if (this.map[r][c] === 1) { wallLeft = c; break; }
+          }
+          let wallRight = this.map[r].length - 1;
+          for (let c = mummyObj.col + 1; c < this.map[r].length; c++) {
+            if (this.map[r][c] === 1) { wallRight = c; break; }
+          }
+          const half = Math.floor(originalSpan / 2);
+          let pMin = Math.max(mummyObj.col - half, wallLeft + 1);
+          let pMax = Math.min(pMin + originalSpan, wallRight - 1);
+          if (pMax < pMin) pMax = pMin;
+          mummyObj.patrolMinCol = pMin;
+          mummyObj.patrolMaxCol = pMax;
+          switchMode('patrol');
+          return;
+        }
+        const step = this._chaseStepMummy(mummyObj);
+        if (step) moveMummy(step[0], step[1]);
+      } else {
+        const nextCol = mummyObj.col + mummyObj.direction;
+        if (
+          nextCol < mummyObj.patrolMinCol ||
+          nextCol > mummyObj.patrolMaxCol ||
+          this.map[mummyObj.row][nextCol] === 1
+        ) {
+          mummyObj.direction *= -1;
+          return;
+        }
+        moveMummy(mummyObj.direction, 0);
+      }
+    };
+
+    mummyObj.timer = this.time.addEvent({ delay: 600, callback: tick, loop: true });
+  }
+
+  _mummyHasLineOfSight(mummy) {
+    const mc = mummy.col, mr = mummy.row;
+    const pc = this.pipCol, pr = this.pipRow;
+    if (mr !== pr && mc !== pc) return false;
+    const dist = Math.abs(mr === pr ? pc - mc : pr - mr);
+    if (dist > 5 || dist === 0) return false;
+    if (mr === pr) {
+      const step = mc < pc ? 1 : -1;
+      for (let c = mc + step; c !== pc; c += step) {
+        if (this.map[mr][c] === 1) return false;
+      }
+    } else {
+      const step = mr < pr ? 1 : -1;
+      for (let r = mr + step; r !== pr; r += step) {
+        if (this.map[r][mc] === 1) return false;
+      }
+    }
+    return true;
+  }
+
+  _isTileLethalForMummy(col, row) {
+    for (const { rect, col: fc, row: fr } of this.flameRects) {
+      if (fc === col && fr === row && rect.active) return true;
+    }
+    for (const { rect, col: sc, row: sr } of this.spikeRects) {
+      if (sc === col && sr === row && rect.active) return true;
+    }
+    for (const { col: bc, row: br, active } of this.bladeZones) {
+      if (bc === col && br === row && active()) return true;
+    }
+    return false;
+  }
+
+  _chaseStepMummy(mummy) {
+    const start = `${mummy.col},${mummy.row}`;
+    const goal = `${mummy.lastSeenCol},${mummy.lastSeenRow}`;
+    if (start === goal) return null;
+    const parent = new Map([[start, null]]);
+    const queue = [[mummy.col, mummy.row]];
+    // same-row neighbours first to prefer staying on patrol row when possible
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    while (queue.length) {
+      const [c, r] = queue.shift();
+      const k = `${c},${r}`;
+      if (k === goal) {
+        let cur = k;
+        while (parent.get(cur) !== start) cur = parent.get(cur);
+        const [nc, nr] = cur.split(',').map(Number);
+        return [nc - mummy.col, nr - mummy.row];
+      }
+      for (const [dc, dr] of dirs) {
+        const nc = c + dc, nr = r + dr;
+        const nk = `${nc},${nr}`;
+        if (parent.has(nk)) continue;
+        if (nr < 0 || nr >= this.map.length || nc < 0 || nc >= this.map[nr].length) continue;
+        if (this.map[nr][nc] === 1) continue;
+        if (this._isTileLethalForMummy(nc, nr) && nk !== goal) continue;
+        parent.set(nk, k);
+        queue.push([nc, nr]);
+      }
+    }
+    return null;
+  }
+
+  _killMummy(mummy) {
+    if (mummy.dead) return;
+    mummy.dead = true;
+    mummy.timer.remove();
+    const g = mummy.visuals[0];
+    this.tweens.killTweensOf(g);
+    this.tweens.add({
+      targets: g,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => g.destroy(),
     });
+    const px = mummy.col * TILE_SIZE + TILE_SIZE / 2;
+    const py = mummy.row * TILE_SIZE + TILE_SIZE / 2;
+    const puff = this.add.particles(px, py, '__DEFAULT', {
+      speed: { min: 40, max: 90 },
+      angle: { min: 0, max: 360 },
+      lifespan: 400,
+      scale: { start: 0.5, end: 0 },
+      tint: [0xc8a878, 0x8a7050, 0x6a4828],
+      alpha: { start: 0.8, end: 0 },
+      quantity: 10,
+      emitting: false,
+    });
+    puff.explode(10);
+    this.time.delayedCall(500, () => { if (puff.scene) puff.destroy(); });
+    const idx = this.mummyList.indexOf(mummy);
+    if (idx !== -1) this.mummyList.splice(idx, 1);
+    const gIdx = this._mummyGraphics.indexOf(g);
+    if (gIdx !== -1) this._mummyGraphics.splice(gIdx, 1);
   }
 
   createSpike(trap) {
@@ -868,7 +1028,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const mummy of this.mummyList) {
-      if (this.pipCol === mummy.col && this.pipRow === mummy.row) {
+      if (!mummy.dead && this.pipCol === mummy.col && this.pipRow === mummy.row) {
         this.resetPip();
         return;
       }
