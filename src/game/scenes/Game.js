@@ -48,6 +48,7 @@ export class GameScene extends Phaser.Scene {
     this._keyHudIcons = [null, null];
     this._starEmitter = null;
     this._key2RevealEmitter = null;
+    this._playerHudText = null;
     this.pipMoving = false;
   }
 
@@ -110,6 +111,7 @@ export class GameScene extends Phaser.Scene {
     this._keyHudIcons = [null, null];
     this._starEmitter = null;
     this._key2RevealEmitter = null;
+    this._playerHudText = null;
 
     bakeTileTextures(this);
 
@@ -265,6 +267,7 @@ export class GameScene extends Phaser.Scene {
       if (this._exitPulseTween) this._exitPulseTween.stop();
       if (this._starEmitter) this._starEmitter.destroy();
       if (this._key2RevealEmitter) this._key2RevealEmitter.destroy();
+      if (this._playerHudText) this._playerHudText.destroy();
       this._keyHudIcons.forEach((icon) => {
         if (icon) icon.destroy();
       });
@@ -288,6 +291,7 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.createTraps();
     this.createKey();
+    this.createPlayerHud();
   }
 
   createTraps() {
@@ -321,6 +325,29 @@ export class GameScene extends Phaser.Scene {
       this._keyHudSlots[1] = drawKeyIcon(this, width - 32, 24);
       this._keyHudSlots[1].setAlpha(0.25).setDepth(50).setScrollFactor(0);
     }
+  }
+
+  createPlayerHud() {
+    const activePlayer = this.game.registry.get('activePlayer');
+    if (!activePlayer) return;
+    this._playerHudText = this.add.text(
+      this.scale.width - 110, 8,
+      `${activePlayer.name}\n◉ ${activePlayer.coin_balance}`,
+      {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#ffd700',
+        stroke: '#4a2800',
+        strokeThickness: 3,
+        align: 'right',
+      },
+    ).setOrigin(1, 0).setScrollFactor(0).setDepth(50);
+  }
+
+  refreshPlayerHud() {
+    if (!this._playerHudText) return;
+    const p = this.game.registry.get('activePlayer');
+    if (p) this._playerHudText.setText(`${p.name}\n◉ ${p.coin_balance}`);
   }
 
   respawnKey(index) {

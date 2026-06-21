@@ -39,7 +39,7 @@ export class BootScene extends Phaser.Scene {
     bakeTileTextures(this);
     bakeDecorTextures(this);
 
-    const start = () => this.scene.start('TitleScene');
+    const start = () => this.scene.start('PlayerScene');
 
     const WebFont = window.WebFont;
     if (WebFont && typeof WebFont.load === 'function') {
