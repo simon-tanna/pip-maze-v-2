@@ -6,6 +6,7 @@ import { GameScene } from './scenes/Game.js';
 import { WinScene } from './scenes/Win.js';
 import { TutorialScene } from './scenes/Tutorial.js';
 import { BossScene } from './scenes/Boss.js';
+import { ArtLabScene } from './scenes/ArtLab.js';
 
 const config: Phaser.Types.Core.GameConfig = {
     type: WEBGL,
@@ -27,6 +28,8 @@ const config: Phaser.Types.Core.GameConfig = {
         WinScene,
         TutorialScene,
         BossScene,
+        // Dev-only art-direction lab (screenshots / palette iteration).
+        ...(import.meta.env.DEV ? [ArtLabScene] : []),
     ],
 };
 
