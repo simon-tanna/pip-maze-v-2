@@ -22,7 +22,7 @@ Phaser 4.1 game using Vite + TypeScript. Note: this is **Phaser 4**, not Phaser 
 Entry chain:
 - `index.html` loads `/src/main.ts` and includes the on-screen d-pad markup that `GameScene`/`TutorialScene` reference via `document.getElementById('dpad' | 'btn-up' | …)`. The WebFont loader is also pulled in from CDN here.
 - `src/main.ts` waits for DOMContentLoaded then calls `StartGame('game-container')`.
-- `src/game/main.ts` defines the `GameConfig` (960×720 FIT-scaled, AUTO renderer, `pixelArt: true`, `#2c1810` background) and registers the scene list.
+- `src/game/main.ts` defines the `GameConfig` (960×720 FIT-scaled, WEBGL renderer, `pixelArt: true`, `#0e0a0c` ink background so iris transitions close to black) and registers the scene list.
 
 Scenes live in `src/game/scenes/` as `Boot.js`, `Player.js`, `Title.js`, `Game.js`, `Win.js`, `Tutorial.js`, `Boss.js`, `Hud.js` (and dev-only `ArtLab.js`), each exporting a `…Scene` class. Run order:
 
