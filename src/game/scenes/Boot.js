@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_CONFIGS, bakeTileTextures, bakeDecorTextures } from '../lib/graphics.js';
+import { CHARACTER_CONFIGS } from '../lib/graphics.js';
 import { registerCharacterAnimations } from '../lib/animation-registry.js';
 import { bakeEnvironmentTextures } from '../lib/environment.js';
 import { bakeHazardTextures, registerHazardAnimations } from '../lib/hazard-art.js';
@@ -38,8 +38,6 @@ export class BootScene extends Phaser.Scene {
   create() {
     registerCharacterAnimations(this);
     this._registerTrollFramesAndAnims();
-    bakeTileTextures(this);
-    bakeDecorTextures(this);
     bakeEnvironmentTextures(this);
     bakeHazardTextures(this);
     registerHazardAnimations(this);
