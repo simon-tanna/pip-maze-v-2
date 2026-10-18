@@ -4,8 +4,8 @@
 // visible telegraph inside the existing "off" window before damage starts.
 //
 // Returned records keep the shapes the scenes already use:
-//   flame/spike → { rect: { active }, col, row }
-//   blade       → { col, row, active: () => boolean }
+//   flame/spike → { rect: { active, telegraph }, col, row }
+//   blade       → { col, row, active: () => boolean, angle: () => degrees }
 
 import { TILE_SIZE } from './constants.js';
 import { LIGHT, P } from './palette.js';
@@ -45,7 +45,7 @@ export function createFlameTrap(scene, trap, { fx, lit = false, onIgnite = () =>
   const flame = scene.add.sprite(x, y + 8, HAZARD_KEYS.flame(0))
     .setOrigin(0.5, 1).setDepth(DEPTH.hazard).setVisible(false);
   const light = lit ? scene.lights.addLight(x, y - 10, 140, LIGHT.FLAME, 0) : null;
-  const rect = { active: false };
+  const rect = { active: false, telegraph: false };
   let flicker = null;
 
   const fadeLight = (intensity, duration, ease = 'Sine.easeInOut') => {
@@ -67,6 +67,7 @@ export function createFlameTrap(scene, trap, { fx, lit = false, onIgnite = () =>
   };
 
   const ignite = () => {
+    rect.telegraph = false;
     rect.active = true;
     flame.setVisible(true).setAlpha(1).setScale(1, 0.3).play('hz-flame');
     scene.tweens.add({ targets: flame, scaleY: 1, duration: 120, ease: 'Back.easeOut' });
@@ -83,6 +84,7 @@ export function createFlameTrap(scene, trap, { fx, lit = false, onIgnite = () =>
 
   // Telegraph: the grate heats, embers rise and the light ramps up.
   const cycle = () => {
+    rect.telegraph = true;
     nozzle.setTexture(HAZARD_KEYS.nozzle(NOZZLE_STATE.HOT));
     fadeLight(0.7, HAZARD_TIMING.telegraph, 'Sine.easeIn');
     if (fx) {
@@ -102,7 +104,7 @@ export function createSpikeTrap(scene, trap, { fx, onActive = () => {} }) {
   const x = centre(trap.col);
   const y = centre(trap.row);
   const plate = scene.add.image(x, y, HAZARD_KEYS.spike(SPIKE_STATE.IDLE)).setDepth(DEPTH.base);
-  const rect = { active: false };
+  const rect = { active: false, telegraph: false };
 
   const retract = () => {
     rect.active = false;
@@ -117,6 +119,7 @@ export function createSpikeTrap(scene, trap, { fx, onActive = () => {} }) {
     plate.setX(x).setTexture(HAZARD_KEYS.spike(SPIKE_STATE.UP)).setScale(0.82);
     scene.tweens.add({ targets: plate, scale: 1, duration: 120, ease: 'Back.easeOut' });
     scene.time.delayedCall(HAZARD_TIMING.spikeRise, () => {
+      rect.telegraph = false;
       rect.active = true;
       onActive();
       scene.time.delayedCall(HAZARD_TIMING.spikeUp, retract);
@@ -125,6 +128,7 @@ export function createSpikeTrap(scene, trap, { fx, onActive = () => {} }) {
 
   // Telegraph: the frame heats red, the plate rumbles and kicks up dust.
   const cycle = () => {
+    rect.telegraph = true;
     plate.setTexture(HAZARD_KEYS.spike(SPIKE_STATE.ARMED));
     scene.tweens.add({
       targets: plate, x: x + 1, duration: 50, yoyo: true, repeat: 4,
@@ -183,7 +187,10 @@ export function createBladeTrap(scene, trap, { onEnter = () => {} }) {
     },
   });
 
-  return { zone: { col: trap.col, row: trap.row, active: () => bladeIn }, tween };
+  return {
+    zone: { col: trap.col, row: trap.row, active: () => bladeIn, angle: () => blade.angle },
+    tween,
+  };
 }
 
 // Mummy visual: a container (sprite + contact shadow) so gameplay can keep

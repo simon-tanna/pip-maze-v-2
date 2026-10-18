@@ -129,24 +129,31 @@ function paintBlade(g) {
   rect(g, P.INK, 20, 0, 8, 6);
   rect(g, P.STEEL_DARK, 21, 0, 6, 5);
   rect(g, P.STEEL_LIGHT, 22, 1, 1, 1);
-  rect(g, P.INK, 22, 4, 4, 26);
-  rect(g, P.STONE_SIDE, 23, 4, 2, 25);
-  rect(g, P.STONE_LIGHT, 23, 4, 1, 25);
-  const cy = 32;
-  for (let dy = -10; dy <= 10; dy++) {
-    const w = Math.round(12 * Math.sqrt(1 - (dy / 11) ** 2));
+  rect(g, P.INK, 22, 4, 4, 40);
+  rect(g, P.STONE_SIDE, 23, 4, 2, 39);
+  rect(g, P.STONE_LIGHT, 23, 4, 1, 39);
+  // Crescent bits: wide at the edge, narrow at the haft.
+  const cy = 30;
+  for (let dy = -14; dy <= 14; dy++) {
+    const t = Math.abs(dy) / 15;
+    const reach = Math.round(17 * Math.sqrt(1 - t * t));
+    const neck = Math.round(4 + 6 * t * t);
+    const w = reach - neck;
     if (w <= 0) continue;
     const y = cy + dy;
-    rect(g, P.INK, 21 - w, y, w + 1, 1);
-    rect(g, P.STEEL, 22 - w, y, w - 1, 1);
-    rect(g, P.STEEL_LIGHT, 22 - w, y, 1, 1);
-    rect(g, P.INK, 26, y, w + 1, 1);
-    rect(g, P.STEEL, 26, y, w - 1, 1);
-    rect(g, P.STEEL_DARK, 25 + w - 1, y, 1, 1);
+    const lx = 22 - reach;
+    rect(g, P.INK, lx - 1, y, w + 1, 1);
+    rect(g, P.STEEL, lx, y, w, 1);
+    rect(g, P.STEEL_LIGHT, lx, y, 2, 1);
+    const rx = 26 + neck;
+    rect(g, P.INK, rx, y, w + 1, 1);
+    rect(g, P.STEEL, rx, y, w, 1);
+    rect(g, P.STEEL_DARK, rx + w - 2, y, 2, 1);
   }
-  rect(g, P.INK, 20, cy - 3, 8, 7);
-  rect(g, P.STEEL_DARK, 21, cy - 2, 6, 5);
-  rect(g, P.STEEL_LIGHT, 22, cy - 2, 2, 1);
+  rect(g, P.INK, 4, cy - 15, 40, 1, 0);
+  rect(g, P.INK, 19, cy - 4, 10, 9);
+  rect(g, P.STEEL_DARK, 20, cy - 3, 8, 7);
+  rect(g, P.STEEL_LIGHT, 21, cy - 3, 3, 1);
 }
 
 // Shambling mummy, 4 frames. `alert` frames light the eyes for the chase.

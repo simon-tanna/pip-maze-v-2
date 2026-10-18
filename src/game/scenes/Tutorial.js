@@ -1,23 +1,26 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
-import { tileRng } from '../lib/generator.js';
+import { CHARACTER_CONFIGS, drawChest, drawKey } from '../lib/graphics.js';
+import { P, LIGHT } from '../lib/palette.js';
+import { drawChamber, planDecor } from '../lib/environment.js';
 import {
-  CHARACTER_CONFIGS,
-  createPlayer,
-  bakeTileTextures,
-  wallTileKey,
-  floorTileKey,
-  drawChest,
-  drawKey,
-  drawFlameNozzle,
-  createFlame,
-  drawBlade,
-  drawMummy,
-  drawSpike,
-  drawSpikeBase,
-} from '../lib/graphics.js';
+  DEPTH,
+  createFlameTrap,
+  createSpikeTrap,
+  createBladeTrap,
+  createMummyVisual,
+  setMummyFacing,
+} from '../lib/hazards.js';
+import { HAZARD_KEYS } from '../lib/hazard-art.js';
+import { createHero } from '../lib/hero.js';
+import { createWorldFx, flash, hitStop, iris } from '../lib/fx.js';
+import { TEXT, createButton } from '../lib/ui.js';
 import { TUTORIAL_CONFIGS } from '../lib/tutorial-config.js';
-import { hideDpad, showDpad, wireDpad, unwireDpad } from '../lib/dpad.js';
+import { hideDpad, showDpad, unwireDpad } from '../lib/dpad.js';
+
+const T = TILE_SIZE;
+const centre = (n) => n * T + T / 2;
+const TUTORIAL_SEED = 12345;
 
 export class TutorialScene extends Phaser.Scene {
   constructor() {
@@ -30,23 +33,16 @@ export class TutorialScene extends Phaser.Scene {
     this.bladeZones = [];
     this.mummyList = [];
     this._bladeTweens = [];
-    this._mummyGraphics = [];
     this.spikeRects = [];
-    this._spikeGraphics = [];
-    this._spikeGlows = [];
     this._winTriggered = false;
+    this._dying = false;
     this.keysCollected = 0;
-    this._keyHudSlots = [null, null];
-    this._keyHudIcons = [null, null];
-    this._starEmitter = null;
-    this._key2RevealEmitter = null;
     this._demoRunning = false;
-    this._allowPlayerInput = false;
     this.pipMoving = false;
-    this._cycleTimers = [];
+    this._arrow = null;
   }
 
-  create(data) {
+  create() {
     if (this.currentPhase >= TUTORIAL_CONFIGS.length) {
       hideDpad();
       this.events.once('shutdown', () => {
@@ -62,238 +58,109 @@ export class TutorialScene extends Phaser.Scene {
     this.map = tutorialConfig.map;
     this.startCol = tutorialConfig.startCol;
     this.startRow = tutorialConfig.startRow;
-    this.walls = this.add.group();
-    this.flameRects = [];
-    this.bladeZones = [];
-    this.mummyList = [];
-    this._bladeTweens = [];
-    this._mummyGraphics = [];
-    this.spikeRects = [];
-    this._spikeGraphics = [];
-    this._spikeGlows = [];
-    this._winTriggered = false;
-    this.keysCollected = 0;
     this.requiredKeys = 1;
-    this.keyState = [
-      {
-        col: tutorialConfig.keyCol,
-        row: tutorialConfig.keyRow,
-        sprite: null,
-        pulseTween: null,
-        collected: false,
-      },
-    ];
-    this._keyHudSlots = [null, null];
-    this._keyHudIcons = [null, null];
-    this._starEmitter = null;
-    this._key2RevealEmitter = null;
-
+    this.keyState = [{
+      col: tutorialConfig.keyCol,
+      row: tutorialConfig.keyRow,
+      sprite: null,
+      pulseTween: null,
+      collected: false,
+    }];
     this._tutorialInstruction = tutorialConfig.instruction;
-    this._instructionText = null;
-    this._instructionBox = null;
-    this._arrow = null;
-    this._hintText = null;
-    this._demoRunning = false;
-    this._allowPlayerInput = false;
-    this._seed = 12345;
 
-    bakeTileTextures(this);
+    this.lights.enable().setAmbientColor(LIGHT.AMBIENT);
+    this.fx = createWorldFx(this);
 
-    tutorialConfig.map.forEach((row, rowIdx) => {
-      row.forEach((tile, colIdx) => {
-        const x = colIdx * TILE_SIZE + TILE_SIZE / 2;
-        const y = rowIdx * TILE_SIZE + TILE_SIZE / 2;
-        const variant = tileRng(this._seed, colIdx, rowIdx)();
+    const avoid = new Set([
+      `${this.startCol},${this.startRow}`,
+      `${tutorialConfig.keyCol},${tutorialConfig.keyRow}`,
+      `${tutorialConfig.chestCol},${tutorialConfig.chestRow}`,
+      ...tutorialConfig.traps.map((t) => `${t.col},${t.row}`),
+    ]);
+    drawChamber(this, this.map, TUTORIAL_SEED, {
+      key: 'env-tutorial',
+      decor: planDecor(this.map, TUTORIAL_SEED, avoid),
+    }).setLighting(true).setDepth(0);
 
-        if (tile === 1) {
-          const wallImg = this.add.image(x, y, wallTileKey(variant));
-          this.walls.add(wallImg);
-        } else {
-          this.add.image(x, y, floorTileKey(variant));
-          if (tile === 3) {
-            const chest = drawChest(this, x, y);
-            this._exitPulseTween = this.tweens.add({
-              targets: chest,
-              alpha: { from: 1, to: 0.75 },
-              duration: 700,
-              yoyo: true,
-              repeat: -1,
-              ease: 'Sine.easeInOut',
-            });
-          }
-        }
-      });
-    });
+    const chest = drawChest(this, centre(tutorialConfig.chestCol), centre(tutorialConfig.chestRow))
+      .setDepth(DEPTH.pickup);
+    chest.enableFilters();
+    chest.filters.internal.addGlow(P.GOLD_LIGHT, 3, 0, 1);
+    this.lights.addLight(chest.x, chest.y, 90, LIGHT.GOLD, 0.6);
 
     this.pipCol = this.startCol;
     this.pipRow = this.startRow;
     this.pipMoving = false;
     this.pipFacing = 'down';
-    this.playerKey = 'pip';
     this.playerAnimKey = CHARACTER_CONFIGS.pip.animKey;
 
-    this.pip = createPlayer(
-      this,
-      this.startCol * TILE_SIZE + TILE_SIZE / 2,
-      this.startRow * TILE_SIZE + TILE_SIZE / 2,
-    );
+    this.hero = createHero(this, centre(this.startCol), centre(this.startRow), 'pip',
+      { depth: DEPTH.hero, fx: this.fx });
+    this.pip = this.hero.sprite;
     this.pip.play(`${this.playerAnimKey}-idle-down`);
+    this.torch = this.lights.addLight(this.pip.x, this.pip.y, 230, LIGHT.TORCH, 1.5);
+    this.cameras.main.filters.external.addVignette(0.5, 0.5, 1.0, 0.25, P.INK);
 
-    this.add.text(12, 8, `Tutorial: ${tutorialConfig.name}`, {
-      fontSize: '22px',
-      color: '#ffd700',
-      stroke: '#4a2800',
-      strokeThickness: 4,
-      fontStyle: 'bold',
+    this.scene.launch('HudScene', {
+      mode: 'tutorial',
+      source: 'TutorialScene',
+      title: `TUTORIAL · ${tutorialConfig.name.toUpperCase()}`,
+      requiredKeys: 1,
+      collected: 0,
+      instruction: this._tutorialInstruction,
     });
 
     hideDpad();
     this.events.once('shutdown', () => {
       this.time.removeAllEvents();
+      this.tweens.timeScale = 1;
+      this.time.timeScale = 1;
       showDpad();
       unwireDpad(this);
-      if (this.pip) this.pip.destroy();
-      if (this._exitPulseTween) this._exitPulseTween.stop();
-      if (this._instructionBox) this._instructionBox.destroy();
-      if (this._instructionText) this._instructionText.destroy();
-      if (this._arrow) {
-        this.tweens.killTweensOf(this._arrow);
-        this._arrow.destroy();
-      }
-      if (this._hintText) this._hintText.destroy();
-      this._keyHudIcons.forEach((icon) => {
-        if (icon) icon.destroy();
-      });
-      this._keyHudSlots.forEach((slot) => {
-        if (slot) slot.destroy();
-      });
-      this.keyState.forEach((k) => {
-        if (k.pulseTween) k.pulseTween.stop();
-      });
-      this._bladeTweens.forEach((t) => t.stop());
-      this._mummyGraphics.forEach((g) => this.tweens.killTweensOf(g));
-      this._spikeGraphics.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
-      this._spikeGlows.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
     });
 
     this.setupInput();
     this.createTraps();
     this.createKey();
-    this.createInstructionBox();
+    iris(this, this.pip.x, this.pip.y, 'open', 360);
     this.runAutoDemo();
   }
 
+  hud(msg) {
+    this.events.emit('hud', msg);
+  }
+
   createTraps() {
-    const tutorialConfig = TUTORIAL_CONFIGS[this.currentPhase];
-    const traps = tutorialConfig.traps || [];
+    const traps = TUTORIAL_CONFIGS[this.currentPhase].traps || [];
     traps.forEach((trap) => {
-      if (trap.type === 'flame') this.createFlame(trap);
-      if (trap.type === 'blade') this.createBlade(trap);
+      if (trap.type === 'flame') this.flameRects.push(createFlameTrap(this, trap, { fx: this.fx, lit: true }));
+      if (trap.type === 'blade') {
+        const { zone, tween } = createBladeTrap(this, trap, { onEnter: () => this.checkBladeHazards() });
+        this.bladeZones.push(zone);
+        this._bladeTweens.push(tween);
+      }
       if (trap.type === 'mummy') this.createMummy(trap);
-      if (trap.type === 'spike') this.createSpike(trap);
+      if (trap.type === 'spike') {
+        this.spikeRects.push(createSpikeTrap(this, trap, { fx: this.fx, onActive: () => this.checkSpikeHazards() }));
+      }
     });
   }
 
   createKey() {
     const k = this.keyState[0];
-    const x = k.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = k.row * TILE_SIZE + TILE_SIZE / 2;
-    k.sprite = drawKey(this, x, y);
+    const x = centre(k.col);
+    const y = centre(k.row);
+    k.sprite = drawKey(this, x, y).setDepth(DEPTH.pickup);
+    k.sprite.enableFilters();
+    k.sprite.filters.internal.addGlow(P.GOLD_LIGHT, 3, 0, 1);
+    k.light = this.lights.addLight(x, y, 70, LIGHT.GOLD, 0.7);
     k.pulseTween = this.tweens.add({
-      targets: k.sprite,
-      alpha: { from: 1, to: 0.65 },
-      duration: 600,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
+      targets: k.sprite, y: y - 3, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
-  }
-
-  createFlame(trap) {
-    const x = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = trap.row * TILE_SIZE + TILE_SIZE / 2;
-
-    drawFlameNozzle(this, x, y);
-    const glow = this.add.circle(x, y - 4, TILE_SIZE * 0.36, 0xff6600, 0.2);
-    const flame = createFlame(this, x, y);
-
-    const flameRef = { active: false };
-    this.flameRects.push({ rect: flameRef, col: trap.col, row: trap.row });
-
-    let flickerTween = null;
-
-    const cycle = () => {
-      this.tweens.add({
-        targets: glow,
-        alpha: 0.65,
-        duration: 500,
-        onComplete: () => {
-          flameRef.active = true;
-          flame.alpha = 1;
-          flickerTween = this.tweens.add({
-            targets: flame,
-            alpha: { from: 0.85, to: 1 },
-            duration: 90,
-            yoyo: true,
-            repeat: -1,
-          });
-          this.time.delayedCall(2000, () => {
-            if (flickerTween) {
-              flickerTween.stop();
-              flickerTween = null;
-            }
-            flameRef.active = false;
-            flame.alpha = 0;
-            glow.alpha = 0.2;
-            this.time.delayedCall(2000, cycle);
-          });
-        },
-      });
-    };
-    cycle();
-  }
-
-  createBlade(trap) {
-    const pivotX = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const pivotY = trap.row * TILE_SIZE + 2;
-
-    const axe = drawBlade(this, pivotX, pivotY);
-
-    let bladeIn = false;
-    this.bladeZones.push({
-      col: trap.col,
-      row: trap.row,
-      active: () => bladeIn,
-    });
-
-    const bladeTween = this.tweens.add({
-      targets: axe,
-      angle: 40,
-      duration: 1100,
-      ease: 'Sine.easeInOut',
-      yoyo: true,
-      repeat: -1,
-      onUpdate: () => {
-        const next = Math.abs(axe.angle) < 22;
-        if (next && !bladeIn) {
-          bladeIn = true;
-          this.checkBladeHazards();
-        } else if (!next && bladeIn) {
-          bladeIn = false;
-        }
-      },
-    });
-
-    this._bladeTweens.push(bladeTween);
   }
 
   createMummy(trap) {
-    const startX = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const startY = trap.row * TILE_SIZE + TILE_SIZE / 2;
-
-    const g = drawMummy(this, startX, startY);
-    this._mummyGraphics.push(g);
-
+    const g = createMummyVisual(this, centre(trap.col), centre(trap.row));
     const mummyObj = { col: trap.col, row: trap.row, visuals: [g] };
     this.mummyList.push(mummyObj);
 
@@ -316,11 +183,11 @@ export class TutorialScene extends Phaser.Scene {
 
       mummyObj.col = nextCol;
       mummyMoving = true;
+      setMummyFacing(g, direction);
 
-      const targetX = mummyObj.col * TILE_SIZE + TILE_SIZE / 2;
       this.tweens.add({
         targets: g,
-        x: targetX,
+        x: centre(mummyObj.col),
         duration: 400,
         ease: 'Linear',
         onComplete: () => {
@@ -335,66 +202,6 @@ export class TutorialScene extends Phaser.Scene {
       callback: stepMummy,
       loop: true,
     });
-  }
-
-  createSpike(trap) {
-    const x = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = trap.row * TILE_SIZE + TILE_SIZE / 2;
-
-    const base = drawSpikeBase(this, x, y);
-    this._spikeGraphics.push(base);
-
-    const glow = this.add.circle(x, y, TILE_SIZE * 0.36, 0xcc2200, 0.15);
-    this._spikeGlows.push(glow);
-
-    const spike = drawSpike(this, x, y + 10);
-    spike.alpha = 0;
-    this._spikeGraphics.push(spike);
-
-    const rect = { active: false };
-    this.spikeRects.push({ rect, col: trap.col, row: trap.row });
-
-    const cycle = () => {
-      this.tweens.add({
-        targets: glow,
-        alpha: 0.5,
-        duration: 500,
-        onComplete: () => {
-          spike.alpha = 1;
-          this.tweens.add({
-            targets: spike,
-            y: y,
-            duration: 150,
-            ease: 'Linear',
-            onComplete: () => {
-              rect.active = true;
-              this.checkSpikeHazards();
-              this.time.delayedCall(2000, () => {
-                rect.active = false;
-                this.tweens.add({
-                  targets: spike,
-                  y: y + 10,
-                  duration: 150,
-                  ease: 'Linear',
-                  onComplete: () => {
-                    spike.alpha = 0;
-                    spike.y = y + 10;
-                    this.tweens.add({
-                      targets: glow,
-                      alpha: 0.15,
-                      duration: 200,
-                    });
-                    this.time.delayedCall(2000, cycle);
-                  },
-                });
-              });
-            },
-          });
-        },
-      });
-    };
-
-    this.time.delayedCall(Math.floor(Math.random() * 3000), cycle);
   }
 
   setupInput() {
@@ -412,7 +219,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   tryMove(dCol, dRow, onMoveDone = null) {
-    if (this.pipMoving || this._winTriggered) return;
+    if (this.pipMoving || this._winTriggered || this._dying) return;
     const newCol = this.pipCol + dCol;
     const newRow = this.pipRow + dRow;
 
@@ -426,21 +233,20 @@ export class TutorialScene extends Phaser.Scene {
     else this.pipFacing = 'down';
 
     this.pip.play(`${this.playerAnimKey}-walk-${this.pipFacing}`);
+    this.hero.step();
     this.pipCol = newCol;
     this.pipRow = newRow;
     this.pipMoving = true;
 
-    const targetX = newCol * TILE_SIZE + TILE_SIZE / 2;
-    const targetY = newRow * TILE_SIZE + TILE_SIZE / 2;
-
     this.tweens.add({
       targets: this.pip,
-      x: targetX,
-      y: targetY,
+      x: centre(newCol),
+      y: centre(newRow),
       duration: 120,
       ease: 'Linear',
       onComplete: () => {
         this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
+        this.hero.land();
         this.pipMoving = false;
         this.checkHazards();
         this.checkBladeHazards();
@@ -452,6 +258,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   checkHazards() {
+    if (this._dying) return;
     for (const { rect, col, row } of this.flameRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.showHint('The flame is active. Wait for it to cool down.');
@@ -470,6 +277,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   checkBladeHazards() {
+    if (this._dying) return;
     for (const { col, row, active } of this.bladeZones) {
       if (active() && this.pipCol === col && this.pipRow === row) {
         this.showHint('The blade was still swinging. Wait longer!');
@@ -480,6 +288,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   checkSpikeHazards() {
+    if (this._dying) return;
     for (const { rect, col, row } of this.spikeRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.showHint('The spikes are still up. Wait for them to retract.');
@@ -490,43 +299,37 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   resetPip() {
-    this.pip.stop();
+    this.tweens.killTweensOf(this.pip);
     this.pipCol = this.startCol;
     this.pipRow = this.startRow;
     this.pipMoving = false;
+    const facing = this.pipFacing;
     this.pipFacing = 'down';
+    this._dying = true;
+    flash(this, P.BLOOD, 0.22, 300);
 
-    const x = this.startCol * TILE_SIZE + TILE_SIZE / 2;
-    const y = this.startRow * TILE_SIZE + TILE_SIZE / 2;
-
-    this.pip.setPosition(x, y);
-    this.pip.play(`${this.playerAnimKey}-idle-down`);
-
-    this.showFlash(0xff0000, 0.25, 300);
-  }
-
-  showFlash(color, alpha, duration) {
-    const flash = this.add.rectangle(480, 360, 960, 720, color, alpha);
-    flash.setDepth(1000);
-    this.tweens.add({
-      targets: flash,
-      alpha: 0,
-      duration: duration,
-      onComplete: () => flash.destroy(),
+    this.hero.die(facing, () => {
+      this.pip.play(`${this.playerAnimKey}-idle-down`);
+      this.hero.respawn(centre(this.startCol), centre(this.startRow));
+      this.time.delayedCall(260, () => { this._dying = false; });
     });
   }
 
   checkWin() {
-    if (!this.keyState[0].collected && this.pipCol === this.keyState[0].col && this.pipRow === this.keyState[0].row) {
+    const k = this.keyState[0];
+    if (!k.collected && this.pipCol === k.col && this.pipRow === k.row) {
       this.collectKey(0);
     }
 
     const tutorialConfig = TUTORIAL_CONFIGS[this.currentPhase];
     if (this.keysCollected >= this.requiredKeys && this.pipCol === tutorialConfig.chestCol && this.pipRow === tutorialConfig.chestRow) {
       this._winTriggered = true;
-      this.fadeInstruction();
-      this.time.delayedCall(600, () => {
-        this.scene.start('TutorialScene', { phase: this.currentPhase + 1 });
+      this.hud({ type: 'instruction-fade' });
+      this.fx.sparkle.explode(24, this.pip.x, this.pip.y - 8);
+      this.time.delayedCall(250, () => {
+        iris(this, this.pip.x, this.pip.y, 'close', 360, () => {
+          this.scene.start('TutorialScene', { phase: this.currentPhase + 1 });
+        });
       });
     }
   }
@@ -541,15 +344,21 @@ export class TutorialScene extends Phaser.Scene {
       k.pulseTween = null;
     }
     if (k.sprite) {
+      this.fx.sparkle.explode(16, k.sprite.x, k.sprite.y);
       k.sprite.destroy();
       k.sprite = null;
     }
-
-    this.showFlash(0xffffff, 0.35, 250);
+    if (k.light) { this.lights.removeLight(k.light); k.light = null; }
+    hitStop(this, 60);
+    flash(this, P.CREAM, 0.2, 200);
+    this.hud({ type: 'keys', collected: this.keysCollected, required: this.requiredKeys });
   }
 
   update() {
-    if (this.currentPhase >= TUTORIAL_CONFIGS.length) return;
+    if (this.currentPhase >= TUTORIAL_CONFIGS.length || !this.hero) return;
+    this.hero.sync();
+    this.torch.x = this.pip.x;
+    this.torch.y = this.pip.y;
 
     if (this._demoRunning) {
       this.updateArrow();
@@ -568,142 +377,67 @@ export class TutorialScene extends Phaser.Scene {
     this.updateArrow();
   }
 
-  createInstructionBox() {
-    const boxX = 480;
-    const boxY = 680;
-    const boxWidth = 700;
-    const boxHeight = 60;
-
-    this._instructionBox = this.add.rectangle(
-      boxX,
-      boxY,
-      boxWidth,
-      boxHeight,
-      0xffffff,
-      0.9,
-    );
-    this._instructionBox.setDepth(500);
-
-    this._instructionText = this.add.text(boxX, boxY, '', {
-      fontFamily: 'monospace',
-      fontSize: '18px',
-      color: '#cc0000',
-      align: 'center',
-      wordWrap: { width: boxWidth - 20 },
-    }).setOrigin(0.5).setDepth(501);
-  }
-
   showInstruction(text) {
-    this._instructionText.setText(text);
-    this._instructionBox.setAlpha(0.9);
-    this._instructionText.setAlpha(1);
-  }
-
-  fadeInstruction() {
-    if (!this._instructionBox || !this._instructionText) return;
-    this.tweens.add({
-      targets: [this._instructionBox, this._instructionText],
-      alpha: 0,
-      duration: 400,
-      ease: 'Sine.easeOut',
-    });
+    this.hud({ type: 'instruction', text });
   }
 
   showHint(text) {
-    if (this._hintText) this._hintText.destroy();
-
-    this._hintText = this.add.text(480, 100, text, {
-      fontFamily: 'monospace',
-      fontSize: '20px',
-      color: '#ffff00',
-      stroke: '#000000',
-      strokeThickness: 3,
-      align: 'center',
-      backgroundColor: '#1a1a1a',
-      padding: { x: 10, y: 5 },
-    }).setOrigin(0.5).setDepth(600);
-
-    this.tweens.add({
-      targets: this._hintText,
-      alpha: { from: 1, to: 0 },
-      duration: 3000,
-      delay: 1000,
-      onComplete: () => {
-        if (this._hintText) {
-          this._hintText.destroy();
-          this._hintText = null;
-        }
-      },
-    });
+    this.hud({ type: 'hint', text });
   }
 
-  createArrow() {
-    if (this._arrow) this._arrow.destroy();
-
-    const g = this.add.graphics();
-    g.fillStyle(0xffff00, 1);
-    g.fillTriangleShape(new Phaser.Geom.Triangle(0, -12, -8, 4, 8, 4));
-    g.setDepth(600);
-    g.setAlpha(0);
-
-    this._arrow = g;
-  }
-
-  showArrow(x, y) {
-    if (!this._arrow) this.createArrow();
-
-    this._arrow.setPosition(x, y);
-    if (this._arrow.alpha < 1) {
-      this.tweens.add({
-        targets: this._arrow,
-        alpha: 1,
-        duration: 200,
-        overwrite: 'auto',
+  showArrow(x, y, angle) {
+    if (!this._arrow) {
+      this._arrow = this.add.image(x, y, HAZARD_KEYS.arrow).setScale(2).setDepth(DEPTH.fx).setAlpha(0);
+      this._arrowBase = { x, y };
+      this._arrowBob = this.tweens.add({
+        targets: this._arrow, scale: 2.4, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
       });
     }
-
-    this.tweens.add({
-      targets: this._arrow,
-      y: y - 8,
-      duration: 600,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-      overwrite: 'auto',
-    });
+    this._arrow.setPosition(x, y).setAngle(angle);
+    if (this._arrow.alpha < 1 && !this._arrowFading) {
+      this._arrowFading = true;
+      this.tweens.add({
+        targets: this._arrow, alpha: 1, duration: 150,
+        onComplete: () => { this._arrowFading = false; },
+      });
+    }
   }
 
   hideArrow() {
-    if (!this._arrow) return;
-    this.tweens.add({
-      targets: this._arrow,
-      alpha: 0,
-      duration: 200,
-      overwrite: 'auto',
-    });
+    if (this._arrow && this._arrow.alpha > 0) {
+      this.tweens.killTweensOf(this._arrow);
+      this._arrow.setAlpha(0);
+      this._arrowFading = false;
+      this._arrowBob = this.tweens.add({
+        targets: this._arrow, scale: 2.4, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  // Only guide the player across the trap toward the goal, never back.
+  approachDirection(trap) {
+    const { startCol, startRow } = TUTORIAL_CONFIGS[this.currentPhase];
+    if (trap.row !== startRow) return [0, trap.row > startRow ? 1 : -1];
+    return [trap.col > startCol ? 1 : -1, 0];
   }
 
   updateArrow() {
-    const tutorialConfig = TUTORIAL_CONFIGS[this.currentPhase];
-    const trap = tutorialConfig.traps[0];
-
+    const trap = TUTORIAL_CONFIGS[this.currentPhase].traps[0];
     if (!trap) return;
+    const [appCol, appRow] = this.approachDirection(trap);
 
     const adjacentPositions = [
-      { col: trap.col - 1, row: trap.row, moveCol: 1, moveRow: 0 },
-      { col: trap.col + 1, row: trap.row, moveCol: -1, moveRow: 0 },
-      { col: trap.col, row: trap.row - 1, moveCol: 0, moveRow: 1 },
-      { col: trap.col, row: trap.row + 1, moveCol: 0, moveRow: -1 },
+      { col: trap.col - 1, row: trap.row, moveCol: 1, moveRow: 0, angle: 90 },
+      { col: trap.col + 1, row: trap.row, moveCol: -1, moveRow: 0, angle: -90 },
+      { col: trap.col, row: trap.row - 1, moveCol: 0, moveRow: 1, angle: 180 },
+      { col: trap.col, row: trap.row + 1, moveCol: 0, moveRow: -1, angle: 0 },
     ];
 
     for (const pos of adjacentPositions) {
+      if (pos.moveCol !== appCol || pos.moveRow !== appRow) continue;
       if (this.pipCol === pos.col && this.pipRow === pos.row) {
-        const isSafe = this.isSafeToMove(trap);
-
-        if (isSafe) {
-          const arrowX = this.pip.x + pos.moveCol * TILE_SIZE;
-          const arrowY = this.pip.y + pos.moveRow * TILE_SIZE;
-          this.showArrow(arrowX, arrowY);
+        if (this.isSafeToMove(trap) && !this.pipMoving) {
+          this.showArrow(this.pip.x + pos.moveCol * T, this.pip.y + pos.moveRow * T, pos.angle);
         } else {
           this.hideArrow();
         }
@@ -714,42 +448,22 @@ export class TutorialScene extends Phaser.Scene {
     this.hideArrow();
   }
 
+  // Safe means neither firing nor winding up — the telegraph counts as danger.
   isSafeToMove(trap) {
     if (trap.type === 'blade') {
-      for (const zone of this.bladeZones) {
-        if (zone.col === trap.col && zone.row === trap.row) {
-          return !zone.active();
-        }
-      }
-      return true;
+      const zone = this.bladeZones.find((z) => z.col === trap.col && z.row === trap.row);
+      return zone ? !zone.active() : true;
     }
-
-    if (trap.type === 'flame') {
-      for (const flameRef of this.flameRects) {
-        if (flameRef.col === trap.col && flameRef.row === trap.row) {
-          return !flameRef.rect.active;
-        }
-      }
-      return true;
-    }
-
-    if (trap.type === 'spike') {
-      for (const spikeRef of this.spikeRects) {
-        if (spikeRef.col === trap.col && spikeRef.row === trap.row) {
-          return !spikeRef.rect.active;
-        }
-      }
-      return true;
-    }
-
-    return true;
+    const list = trap.type === 'flame' ? this.flameRects : trap.type === 'spike' ? this.spikeRects : null;
+    if (!list) return true;
+    const ref = list.find((h) => h.col === trap.col && h.row === trap.row);
+    return ref ? !ref.rect.active && !ref.rect.telegraph : true;
   }
 
   runAutoDemo() {
     this._demoRunning = true;
 
-    const tutorialConfig = TUTORIAL_CONFIGS[this.currentPhase];
-    const trap = tutorialConfig.traps[0];
+    const trap = TUTORIAL_CONFIGS[this.currentPhase].traps[0];
 
     this.showInstruction(this._tutorialInstruction);
 
@@ -798,8 +512,7 @@ export class TutorialScene extends Phaser.Scene {
     let currentCol = startCol;
     let currentRow = startRow;
 
-    const approachDCol = (trapRow !== startRow) ? 0 : (trapCol > startCol ? 1 : -1);
-    const approachDRow = (trapRow !== startRow) ? (trapRow > startRow ? 1 : -1) : 0;
+    const [approachDCol, approachDRow] = this.approachDirection(trap);
 
     const targetCol = approachDCol !== 0 ? trapCol - approachDCol : trapCol;
     while (currentCol !== targetCol) {
@@ -840,56 +553,27 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   showOptionsScreen() {
-    if (this.pip) this.pip.destroy();
-    if (this._instructionBox) this._instructionBox.destroy();
-    if (this._instructionText) this._instructionText.destroy();
-    if (this._arrow) this._arrow.destroy();
+    this.add.rectangle(480, 360, 960, 720, P.SHADOW);
+    const rays = this.add.image(480, 250, HAZARD_KEYS.rays).setScale(4).setTint(P.GOLD).setAlpha(0.3)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: rays, angle: 360, duration: 60000, repeat: -1 });
 
-    this.add.rectangle(480, 360, 960, 720, 0x0d0d0d);
+    this.add.text(480, 200, 'TUTORIAL COMPLETE', TEXT.logo(54)).setOrigin(0.5);
+    this.add.text(480, 270, "You're ready to explore the temple.", TEXT.body(22, P.STONE_LIGHT)).setOrigin(0.5);
 
-    this.add.text(480, 200, 'Tutorial Complete!', {
-      fontFamily: '"Black Ops One", sans-serif',
-      fontSize: '60px',
-      color: '#cc0000',
-      shadowOffsetX: 3,
-      shadowOffsetY: 3,
-      shadowColor: '#440000',
-      shadowFill: true,
-    }).setOrigin(0.5);
-
-    this.add.text(480, 300, 'You\'re ready to explore the temple.', {
-      fontFamily: 'monospace',
-      fontSize: '24px',
-      color: '#888888',
-    }).setOrigin(0.5);
-
-    const buttonY1 = 420;
-    const buttonY2 = 520;
-
-    const backBtn = this.add.text(480, buttonY1, 'BACK TO MAIN', {
-      fontFamily: 'monospace',
-      fontSize: '22px',
-      color: '#ffffff',
-      backgroundColor: '#cc0000',
-      padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    backBtn.on('pointerdown', () => this.scene.start('TitleScene'));
-
-    const startBtn = this.add.text(480, buttonY2, 'START GAME', {
-      fontFamily: 'monospace',
-      fontSize: '22px',
-      color: '#ffffff',
-      backgroundColor: '#cc0000',
-      padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    startBtn.on('pointerdown', () => {
+    const toTitle = () => this.scene.start('TitleScene');
+    const toGame = () => {
       this.game.registry.set('character', 'pip');
       this.scene.start('GameScene', { level: 0 });
-    });
+    };
+    const back = createButton(this, 480, 420, 'BACK TO MAIN', { width: 300, onClick: toTitle });
+    const start = createButton(this, 480, 500, 'START GAME', { width: 300, onClick: toGame });
+    start.setFocused(true);
+    back.on('hover', () => { back.setFocused(true); start.setFocused(false); });
+    start.on('hover', () => { start.setFocused(true); back.setFocused(false); });
+    this.add.text(480, 580, 'ENTER  START GAME     SPACE  MAIN MENU', TEXT.label(13)).setOrigin(0.5);
 
-    this.input.keyboard.on('keydown-ENTER', () => this.scene.start('GameScene', { level: 0 }));
-    this.input.keyboard.on('keydown-SPACE', () => this.scene.start('TitleScene'));
+    this.input.keyboard.on('keydown-ENTER', toGame);
+    this.input.keyboard.on('keydown-SPACE', toTitle);
   }
 }
