@@ -1,23 +1,29 @@
-import Phaser from 'phaser';
-import { TILE_SIZE } from '../lib/constants.js';
-import { LEVEL_CONFIGS, generateLevel, criticalPath, isFair } from '../lib/generator.js';
-import { CHARACTER_CONFIGS, drawChest, drawKey } from '../lib/graphics.js';
-import { P, LIGHT } from '../lib/palette.js';
-import { drawChamber, planDecor } from '../lib/environment.js';
+import Phaser from "phaser";
+import { TILE_SIZE } from "../lib/constants.js";
+import {
+  LEVEL_CONFIGS,
+  SPAWN_SAFE_RADIUS,
+  generateLevel,
+  criticalPath,
+  isFair,
+  tilesWithin,
+} from "../lib/generator.js";
+import { CHARACTER_CONFIGS, drawChest, drawKey } from "../lib/graphics.js";
+import { P, LIGHT } from "../lib/palette.js";
+import { drawChamber, planDecor } from "../lib/environment.js";
 import {
   DEPTH,
   createFlameTrap,
   createSpikeTrap,
   createBladeTrap,
-  createMummyVisual,
-  setMummyFacing,
-  setMummyAlert,
-} from '../lib/hazards.js';
-import { createHero } from '../lib/hero.js';
-import { createWorldFx, flash, hitStop, iris, shake } from '../lib/fx.js';
-import { TEXT } from '../lib/ui.js';
-import { hudKeySlotPos } from './Hud.js';
-import { showDpad, wireDpad, unwireDpad } from '../lib/dpad.js';
+} from "../lib/hazards.js";
+import { createGridPathfinder } from "../lib/grid-path.js";
+import { createMummyController } from "../lib/mummy-ai.js";
+import { createHero } from "../lib/hero.js";
+import { createWorldFx, flash, hitStop, iris, shake } from "../lib/fx.js";
+import { TEXT } from "../lib/ui.js";
+import { hudKeySlotPos } from "./Hud.js";
+import { showDpad, wireDpad, unwireDpad } from "../lib/dpad.js";
 
 const T = TILE_SIZE;
 const centre = (n) => n * T + T / 2;
@@ -33,7 +39,6 @@ export class GameScene extends Phaser.Scene {
     this.bladeZones = [];
     this.mummyList = [];
     this._bladeTweens = [];
-    this._mummyGraphics = [];
     this.spikeRects = [];
     this._winTriggered = false;
     this._dying = false;
@@ -62,35 +67,59 @@ export class GameScene extends Phaser.Scene {
     const levelData = this.currentLevel;
     this.map = levelData.map;
     this.requiredKeys = levelData.key2 ? 2 : 1;
-    this.keyState = [levelData.key, ...(levelData.key2 ? [levelData.key2] : [])].map((k) => ({
-      col: k.col, row: k.row, sprite: null, pulseTween: null, light: null, collected: false,
+    this.keyState = [
+      levelData.key,
+      ...(levelData.key2 ? [levelData.key2] : []),
+    ].map((k) => ({
+      col: k.col,
+      row: k.row,
+      sprite: null,
+      pulseTween: null,
+      light: null,
+      collected: false,
     }));
 
     this.startCol = 0;
     this.startRow = 0;
     let exit = null;
-    this.map.forEach((row, r) => row.forEach((tile, c) => {
-      if (tile === 2) { this.startCol = c; this.startRow = r; }
-      if (tile === 3) exit = { col: c, row: r };
-    }));
+    this.map.forEach((row, r) =>
+      row.forEach((tile, c) => {
+        if (tile === 2) {
+          this.startCol = c;
+          this.startRow = r;
+        }
+        if (tile === 3) exit = { col: c, row: r };
+      }),
+    );
     if (this.startCol === 0 && this.startRow === 0 && this.map[0][0] !== 2) {
-      console.warn(`Level ${this.levelIndex}: no start tile (2) found in map — defaulting to [0,0]`);
+      console.warn(
+        `Level ${this.levelIndex}: no start tile (2) found in map — defaulting to [0,0]`,
+      );
     }
 
     this.lights.enable().setAmbientColor(LIGHT.AMBIENT);
     this.fx = createWorldFx(this);
 
     // Static layer: walls, floor, AO and decor baked into one lit image.
-    const avoid = criticalPath(this.map, { col: this.startCol, row: this.startRow },
-      levelData.key, levelData.key2, exit || levelData.key);
+    const avoid = criticalPath(
+      this.map,
+      { col: this.startCol, row: this.startRow },
+      levelData.key,
+      levelData.key2,
+      exit || levelData.key,
+    );
     (levelData.traps || []).forEach((t) => {
-      if (t.type === 'mummy') {
-        for (let c = t.patrolCols[0]; c <= t.patrolCols[1]; c++) avoid.add(`${c},${t.row}`);
+      if (t.type === "mummy") {
+        for (let c = t.patrolCols[0]; c <= t.patrolCols[1]; c++)
+          avoid.add(`${c},${t.row}`);
       } else avoid.add(`${t.col},${t.row}`);
     });
     this.keyState.forEach((k) => avoid.add(`${k.col},${k.row}`));
-    drawChamber(this, this.map, levelSeed, { decor: planDecor(this.map, levelSeed, avoid) })
-      .setLighting(true).setDepth(0);
+    drawChamber(this, this.map, levelSeed, {
+      decor: planDecor(this.map, levelSeed, avoid),
+    })
+      .setLighting(true)
+      .setDepth(0);
 
     if (exit) this.createChest(exit);
 
@@ -99,34 +128,49 @@ export class GameScene extends Phaser.Scene {
     this.pipMoving = false;
     this.pipFacing = "down";
     this.playerKey = this.game.registry.get("character") || "pip";
-    this.playerAnimKey = (CHARACTER_CONFIGS[this.playerKey] || CHARACTER_CONFIGS.pip).animKey;
+    this.playerAnimKey = (
+      CHARACTER_CONFIGS[this.playerKey] || CHARACTER_CONFIGS.pip
+    ).animKey;
 
-    this.hero = createHero(this, centre(this.startCol), centre(this.startRow), undefined,
-      { depth: DEPTH.hero, fx: this.fx });
+    this.hero = createHero(
+      this,
+      centre(this.startCol),
+      centre(this.startRow),
+      undefined,
+      { depth: DEPTH.hero, fx: this.fx },
+    );
     this.pip = this.hero.sprite;
     this.pip.play(`${this.playerAnimKey}-idle-down`);
-    this.torch = this.lights.addLight(this.pip.x, this.pip.y, 230, LIGHT.TORCH, 1.5);
+    this.torch = this.lights.addLight(
+      this.pip.x,
+      this.pip.y,
+      230,
+      LIGHT.TORCH,
+      1.5,
+    );
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, 40 * T, 15 * T);
     cam.startFollow(this.pip, true, 1, 1);
     cam.filters.external.addVignette(0.5, 0.5, 1.0, 0.25, P.INK);
 
-    const activePlayer = this.game.registry.get('activePlayer');
-    this.scene.launch('HudScene', {
-      mode: 'chamber',
-      source: 'GameScene',
+    const activePlayer = this.game.registry.get("activePlayer");
+    this.scene.launch("HudScene", {
+      mode: "chamber",
+      source: "GameScene",
       title: `CHAMBER ${this.levelIndex + 1}`,
       requiredKeys: this.requiredKeys,
       collected: 0,
-      player: activePlayer ? { name: activePlayer.name, coins: activePlayer.coin_balance } : null,
+      player: activePlayer
+        ? { name: activePlayer.name, coins: activePlayer.coin_balance }
+        : null,
     });
 
     this.events.once("shutdown", () => {
       this.time.removeAllEvents();
       this.tweens.timeScale = 1;
       this.time.timeScale = 1;
-      this.mummyList.forEach((m) => { if (m.timer) m.timer.remove(); });
+      this.mummyList.forEach((m) => m.stop());
       unwireDpad(this);
     });
 
@@ -136,7 +180,7 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.createTraps();
     this.createKey();
-    iris(this, this.pip.x, this.pip.y, 'open', 420);
+    iris(this, this.pip.x, this.pip.y, "open", 420);
   }
 
   createChest({ col, row }) {
@@ -146,7 +190,12 @@ export class GameScene extends Phaser.Scene {
     this.chest.enableFilters();
     const glow = this.chest.filters.internal.addGlow(P.GOLD_LIGHT, 2, 0, 1);
     this._exitPulseTween = this.tweens.add({
-      targets: glow, outerStrength: 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: glow,
+      outerStrength: 4,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
     });
     this.chestLight = this.lights.addLight(x, y, 90, LIGHT.GOLD, 0.6);
   }
@@ -154,15 +203,25 @@ export class GameScene extends Phaser.Scene {
   createTraps() {
     const traps = this.currentLevel.traps || [];
     traps.forEach((trap) => {
-      if (trap.type === "flame") this.flameRects.push(createFlameTrap(this, trap, { fx: this.fx, lit: true }));
+      if (trap.type === "flame")
+        this.flameRects.push(
+          createFlameTrap(this, trap, { fx: this.fx, lit: true }),
+        );
       if (trap.type === "blade") {
-        const { zone, tween } = createBladeTrap(this, trap, { onEnter: () => this.checkBladeHazards() });
+        const { zone, tween } = createBladeTrap(this, trap, {
+          onEnter: () => this.checkBladeHazards(),
+        });
         this.bladeZones.push(zone);
         this._bladeTweens.push(tween);
       }
       if (trap.type === "mummy") this.createMummy(trap);
       if (trap.type === "spike") {
-        this.spikeRects.push(createSpikeTrap(this, trap, { fx: this.fx, onActive: () => this.checkSpikeHazards() }));
+        this.spikeRects.push(
+          createSpikeTrap(this, trap, {
+            fx: this.fx,
+            onActive: () => this.checkSpikeHazards(),
+          }),
+        );
       }
     });
   }
@@ -177,23 +236,43 @@ export class GameScene extends Phaser.Scene {
     k.light = this.lights.addLight(x, y, 70, LIGHT.GOLD, 0.7);
     const bob = () => {
       k.pulseTween = this.tweens.add({
-        targets: k.sprite, y: y - 3, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        targets: k.sprite,
+        y: y - 3,
+        duration: 900,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
       });
     };
     if (fadeIn) {
       k.sprite.setAlpha(0).setScale(k.sprite.scaleX * 0.4);
       this.fx.sparkle.explode(10, x, y);
       this.tweens.add({
-        targets: k.sprite, alpha: 1, scaleX: k.sprite.scaleX / 0.4, scaleY: k.sprite.scaleY / 0.4,
-        duration: 500, ease: 'Back.easeOut', onComplete: bob,
+        targets: k.sprite,
+        alpha: 1,
+        scaleX: k.sprite.scaleX / 0.4,
+        scaleY: k.sprite.scaleY / 0.4,
+        duration: 500,
+        ease: "Back.easeOut",
+        onComplete: bob,
       });
     } else bob();
   }
 
   clearKey(k) {
-    if (k.pulseTween) { k.pulseTween.stop(); k.pulseTween = null; }
-    if (k.sprite) { this.tweens.killTweensOf(k.sprite); k.sprite.destroy(); k.sprite = null; }
-    if (k.light) { this.lights.removeLight(k.light); k.light = null; }
+    if (k.pulseTween) {
+      k.pulseTween.stop();
+      k.pulseTween = null;
+    }
+    if (k.sprite) {
+      this.tweens.killTweensOf(k.sprite);
+      k.sprite.destroy();
+      k.sprite = null;
+    }
+    if (k.light) {
+      this.lights.removeLight(k.light);
+      k.light = null;
+    }
   }
 
   createKey() {
@@ -207,137 +286,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   createMummy(trap) {
-    const startX = centre(trap.col);
-    const startY = centre(trap.row);
-
-    const g = createMummyVisual(this, startX, startY);
-    this._mummyGraphics.push(g);
-    const alertStyle = TEXT.heading(20, P.CURSE);
-
-    const originalSpan = trap.patrolCols[1] - trap.patrolCols[0];
-
-    const mummyObj = {
-      col: trap.col,
-      row: trap.row,
-      visuals: [g],
-      dead: false,
-      mode: 'patrol',
-      direction: 1,
-      moving: false,
-      patrolMinCol: trap.patrolCols[0],
-      patrolMaxCol: trap.patrolCols[1],
-      lastSeenCol: trap.col,
-      lastSeenRow: trap.row,
-      timer: null,
-    };
-    this.mummyList.push(mummyObj);
-
-    const switchMode = (newMode) => {
-      mummyObj.timer.remove();
-      mummyObj.mode = newMode;
-      setMummyAlert(this, g, newMode === 'chase', { textStyle: alertStyle });
-      mummyObj.timer = this.time.addEvent({
-        delay: newMode === 'chase' ? 450 : 600,
-        callback: tick,
-        loop: true,
-      });
-    };
-
-    const moveMummy = (dCol, dRow) => {
-      mummyObj.col += dCol;
-      mummyObj.row += dRow;
-      mummyObj.moving = true;
-      setMummyFacing(g, dCol);
-      const duration = mummyObj.mode === 'chase' ? 300 : 400;
-      this.tweens.add({
-        targets: g,
-        x: centre(mummyObj.col),
-        y: centre(mummyObj.row),
-        duration,
-        ease: 'Linear',
-        onComplete: () => {
-          mummyObj.moving = false;
-          if (this._isTileLethalForMummy(mummyObj.col, mummyObj.row)) {
-            this._killMummy(mummyObj);
-            return;
-          }
-          this.checkHazards();
-        },
-      });
-    };
-
-    const tick = () => {
-      if (mummyObj.dead || mummyObj.moving) return;
-
-      const visible = this._mummyHasLineOfSight(mummyObj);
-      if (visible) {
-        mummyObj.lastSeenCol = this.pipCol;
-        mummyObj.lastSeenRow = this.pipRow;
-        if (mummyObj.mode === 'patrol') {
-          switchMode('chase');
-          return;
-        }
-      }
-
-      if (mummyObj.mode === 'chase') {
-        const atLastSeen = mummyObj.col === mummyObj.lastSeenCol && mummyObj.row === mummyObj.lastSeenRow;
-        if (atLastSeen && !visible) {
-          // recompute patrol bounds centred on current position
-          const r = mummyObj.row;
-          let wallLeft = 0;
-          for (let c = mummyObj.col - 1; c >= 0; c--) {
-            if (this.map[r][c] === 1) { wallLeft = c; break; }
-          }
-          let wallRight = this.map[r].length - 1;
-          for (let c = mummyObj.col + 1; c < this.map[r].length; c++) {
-            if (this.map[r][c] === 1) { wallRight = c; break; }
-          }
-          const half = Math.floor(originalSpan / 2);
-          let pMin = Math.max(mummyObj.col - half, wallLeft + 1);
-          let pMax = Math.min(pMin + originalSpan, wallRight - 1);
-          if (pMax < pMin) pMax = pMin;
-          mummyObj.patrolMinCol = pMin;
-          mummyObj.patrolMaxCol = pMax;
-          switchMode('patrol');
-          return;
-        }
-        const step = this._chaseStepMummy(mummyObj);
-        if (step) moveMummy(step[0], step[1]);
-      } else {
-        const nextCol = mummyObj.col + mummyObj.direction;
-        if (
-          nextCol < mummyObj.patrolMinCol ||
-          nextCol > mummyObj.patrolMaxCol ||
-          this.map[mummyObj.row][nextCol] === 1
-        ) {
-          mummyObj.direction *= -1;
-          return;
-        }
-        moveMummy(mummyObj.direction, 0);
-      }
-    };
-
-    mummyObj.timer = this.time.addEvent({ delay: 600, callback: tick, loop: true });
-  }
-
-  _mummyHasLineOfSight(mummy) {
-    const mc = mummy.col, mr = mummy.row;
-    const pc = this.pipCol, pr = this.pipRow;
-    if (mr !== pr && mc !== pc) return false;
-    const dist = Math.abs(mr === pr ? pc - mc : pr - mr);
-    if (dist > 5 || dist === 0) return false;
-    if (mr === pr) {
-      const step = mc < pc ? 1 : -1;
-      for (let c = mc + step; c !== pc; c += step) {
-        if (this.map[mr][c] === 1) return false;
-      }
-    } else {
-      const step = mr < pr ? 1 : -1;
-      for (let r = mr + step; r !== pr; r += step) {
-        if (this.map[r][mc] === 1) return false;
-      }
+    if (!this.pathfinder) {
+      this.pathfinder = createGridPathfinder(this.map);
+      this.spawnZone = tilesWithin(
+        this.map,
+        { col: this.startCol, row: this.startRow },
+        SPAWN_SAFE_RADIUS,
+      );
     }
-    return true;
+    const mummy = createMummyController(this, trap, {
+      map: this.map,
+      pathfinder: this.pathfinder,
+      hero: () =>
+        this._dying || this._winTriggered
+          ? null
+          : { col: this.pipCol, row: this.pipRow },
+      isLethal: (c, r) => this._isTileLethalForMummy(c, r),
+      safeZone: this.spawnZone,
+      onStep: (m) => {
+        if (this._isTileLethalForMummy(m.col, m.row)) this._killMummy(m);
+        else this.checkHazards();
+      },
+      textStyle: TEXT.heading(20, P.CURSE),
+    });
+    this.mummyList.push(mummy);
   }
 
   _isTileLethalForMummy(col, row) {
@@ -353,61 +325,19 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  _chaseStepMummy(mummy) {
-    const start = `${mummy.col},${mummy.row}`;
-    const goal = `${mummy.lastSeenCol},${mummy.lastSeenRow}`;
-    if (start === goal) return null;
-    const parent = new Map([[start, null]]);
-    const queue = [[mummy.col, mummy.row]];
-    // same-row neighbours first to prefer staying on patrol row when possible
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    while (queue.length) {
-      const [c, r] = queue.shift();
-      const k = `${c},${r}`;
-      if (k === goal) {
-        let cur = k;
-        while (parent.get(cur) !== start) cur = parent.get(cur);
-        const [nc, nr] = cur.split(',').map(Number);
-        return [nc - mummy.col, nr - mummy.row];
-      }
-      for (const [dc, dr] of dirs) {
-        const nc = c + dc, nr = r + dr;
-        const nk = `${nc},${nr}`;
-        if (parent.has(nk)) continue;
-        if (nr < 0 || nr >= this.map.length || nc < 0 || nc >= this.map[nr].length) continue;
-        if (this.map[nr][nc] === 1) continue;
-        if (this._isTileLethalForMummy(nc, nr) && nk !== goal) continue;
-        parent.set(nk, k);
-        queue.push([nc, nr]);
-      }
-    }
-    return null;
-  }
-
   _killMummy(mummy) {
     if (mummy.dead) return;
-    mummy.dead = true;
-    mummy.timer.remove();
-    const g = mummy.visuals[0];
-    this.tweens.killTweensOf(g);
-    this.tweens.add({
-      targets: g,
-      alpha: 0,
-      scaleY: 0.4,
-      duration: 300,
-      onComplete: () => g.destroy(),
-    });
+    mummy.kill();
     this.fx.puff.explode(12, centre(mummy.col), centre(mummy.row));
     const idx = this.mummyList.indexOf(mummy);
     if (idx !== -1) this.mummyList.splice(idx, 1);
-    const gIdx = this._mummyGraphics.indexOf(g);
-    if (gIdx !== -1) this._mummyGraphics.splice(gIdx, 1);
   }
 
   // Dev guard: generateLevel only ships fair levels, so this should never fire.
   validatePaths() {
     const { fair, reason } = isFair(this.currentLevel);
-    if (!fair) console.warn(`⚠ Level ${this.levelIndex + 1}: unfair layout (${reason})`);
+    if (!fair)
+      console.warn(`⚠ Level ${this.levelIndex + 1}: unfair layout (${reason})`);
   }
 
   setupInput() {
@@ -463,7 +393,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   hud(msg) {
-    this.events.emit('hud', msg);
+    this.events.emit("hud", msg);
   }
 
   collectKey(index) {
@@ -481,8 +411,11 @@ export class GameScene extends Phaser.Scene {
     flash(this, P.CREAM, 0.2, 200);
 
     const slot = hudKeySlotPos(index, this.requiredKeys);
-    const flyer = this.add.image(sx, sy, 'key').setDisplaySize(46, 43)
-      .setScrollFactor(0).setDepth(900);
+    const flyer = this.add
+      .image(sx, sy, "key")
+      .setDisplaySize(46, 43)
+      .setScrollFactor(0)
+      .setDepth(900);
     const collected = this.keysCollected;
     this.tweens.add({
       targets: flyer,
@@ -491,10 +424,14 @@ export class GameScene extends Phaser.Scene {
       displayWidth: 26,
       displayHeight: 24,
       duration: 450,
-      ease: 'Cubic.easeInOut',
+      ease: "Cubic.easeInOut",
       onComplete: () => {
         flyer.destroy();
-        this.hud({ type: 'keys', collected: Math.min(collected, this.keysCollected), required: this.requiredKeys });
+        this.hud({
+          type: "keys",
+          collected: Math.min(collected, this.keysCollected),
+          required: this.requiredKeys,
+        });
       },
     });
 
@@ -504,7 +441,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   showToast(message) {
-    this.hud({ type: 'toast', text: message });
+    this.hud({ type: "toast", text: message });
   }
 
   checkWin() {
@@ -553,17 +490,35 @@ export class GameScene extends Phaser.Scene {
       this.tweens.chain({
         targets: this.chest,
         tweens: [
-          { scaleX: sx * 1.2, scaleY: sy * 0.8, duration: 80, ease: 'Quad.easeOut' },
-          { scaleX: sx * 0.9, scaleY: sy * 1.2, duration: 140, ease: 'Back.easeOut' },
+          {
+            scaleX: sx * 1.2,
+            scaleY: sy * 0.8,
+            duration: 80,
+            ease: "Quad.easeOut",
+          },
+          {
+            scaleX: sx * 0.9,
+            scaleY: sy * 1.2,
+            duration: 140,
+            ease: "Back.easeOut",
+          },
           { scaleX: sx, scaleY: sy, duration: 120 },
         ],
       });
     }
     this.fx.sparkle.explode(28, x, y - 8);
-    if (this.chestLight) this.tweens.add({ targets: this.chestLight, intensity: 3, radius: 200, duration: 300 });
+    if (this.chestLight)
+      this.tweens.add({
+        targets: this.chestLight,
+        intensity: 3,
+        radius: 200,
+        duration: 300,
+      });
     shake(this, 160, 0.004);
     this.time.delayedCall(350, () => {
-      iris(this, x, y, 'close', 420, () => this.scene.start("WinScene", { level: this.levelIndex }));
+      iris(this, x, y, "close", 420, () =>
+        this.scene.start("WinScene", { level: this.levelIndex }),
+      );
     });
   }
 
@@ -586,7 +541,9 @@ export class GameScene extends Phaser.Scene {
     this.hero.die(facing, () => {
       this.pip.play(`${this.playerAnimKey}-idle-down`);
       this.hero.respawn(centre(this.startCol), centre(this.startRow));
-      this.time.delayedCall(260, () => { this._dying = false; });
+      this.time.delayedCall(260, () => {
+        this._dying = false;
+      });
     });
 
     if (this.keysCollected === 0) return;
@@ -600,7 +557,11 @@ export class GameScene extends Phaser.Scene {
 
     this.respawnKey(lostIndex);
     this.keysCollected--;
-    this.hud({ type: 'keys', collected: this.keysCollected, required: this.requiredKeys });
+    this.hud({
+      type: "keys",
+      collected: this.keysCollected,
+      required: this.requiredKeys,
+    });
   }
 
   checkHazards() {
@@ -612,7 +573,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const mummy of this.mummyList) {
-      if (!mummy.dead && this.pipCol === mummy.col && this.pipRow === mummy.row) {
+      if (
+        !mummy.dead &&
+        this.pipCol === mummy.col &&
+        this.pipRow === mummy.row
+      ) {
         this.resetPip();
         return;
       }

@@ -207,12 +207,14 @@ export function setMummyFacing(c, dCol) {
   if (dCol !== 0) c.mummySprite.flipX = dCol < 0;
 }
 
-export function setMummyAlert(scene, c, alert, { textStyle } = {}) {
+// `mark` defaults to "!" (alert) or "?" (lost you); pass null for no pop.
+export function setMummyAlert(scene, c, alert, { textStyle, mark = alert ? '!' : '?' } = {}) {
   c.mummySprite.play(alert ? 'hz-mummy-chase' : 'hz-mummy-walk', true);
-  const mark = scene.add.text(c.x, c.y - 30, alert ? '!' : '?', textStyle).setOrigin(0.5).setDepth(DEPTH.fx);
+  if (mark === null) return;
+  const text = scene.add.text(c.x, c.y - 30, mark, textStyle).setOrigin(0.5).setDepth(DEPTH.fx);
   scene.tweens.add({
-    targets: mark, y: c.y - 42, alpha: { from: 1, to: 0 }, duration: 600, ease: 'Cubic.easeOut',
-    onComplete: () => mark.destroy(),
+    targets: text, y: c.y - 42, alpha: { from: 1, to: 0 }, duration: 600, ease: 'Cubic.easeOut',
+    onComplete: () => text.destroy(),
   });
   if (alert) {
     scene.tweens.add({ targets: c.mummySprite, y: -4, duration: 90, yoyo: true, ease: 'Quad.easeOut' });
