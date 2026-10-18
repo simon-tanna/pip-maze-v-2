@@ -25,108 +25,174 @@ export function shuffle(rng, arr) {
   return arr;
 }
 
-// Difficulty config for each of the 9 levels (index 0–8)
+// Difficulty config for each of the 9 levels (index 0–8).
+//   trapCount     — every trap including mummies
+//   mummies       — mummy patrols to place (out of trapCount)
+//   targetCrit    — preferred critical-route length in tiles (rejection sampling)
+//   targetDensity — preferred hazards per 10 critical-route tiles
 export const LEVEL_CONFIGS = [
   {
     loopFactor: 0.36,
     trapCount: 12,
+    mummies: 0,
     trapTypes: ["flame", "blade"],
     patrolRange: [3, 4],
+    targetCrit: 50,
+    targetDensity: 1.3,
   },
   {
     loopFactor: 0.29,
     trapCount: 15,
+    mummies: 0,
     trapTypes: ["flame", "blade"],
     patrolRange: [3, 4],
+    targetCrit: 54,
+    targetDensity: 1.38,
   },
   {
     loopFactor: 0.23,
     trapCount: 18,
+    mummies: 0,
     trapTypes: ["flame", "blade", "spike"],
     patrolRange: [3, 4],
+    targetCrit: 59,
+    targetDensity: 1.45,
   },
   {
     loopFactor: 0.18,
     trapCount: 18,
+    mummies: 0,
     trapTypes: ["flame", "blade", "spike"],
     patrolRange: [3, 4],
+    targetCrit: 63,
+    targetDensity: 1.53,
   },
   {
     loopFactor: 0.14,
     trapCount: 21,
+    mummies: 6,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [3, 4],
+    targetCrit: 68,
+    targetDensity: 1.6,
   },
   {
     loopFactor: 0.11,
     trapCount: 24,
+    mummies: 7,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [3, 4],
+    targetCrit: 72,
+    targetDensity: 1.68,
   },
   {
     loopFactor: 0.09,
     trapCount: 27,
+    mummies: 8,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [3, 4],
+    targetCrit: 76,
+    targetDensity: 1.75,
   },
   {
     loopFactor: 0.06,
     trapCount: 30,
+    mummies: 9,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [5, 6],
+    targetCrit: 81,
+    targetDensity: 1.83,
   },
   {
     loopFactor: 0.05,
     trapCount: 33,
+    mummies: 9,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [5, 6],
+    targetCrit: 85,
+    targetDensity: 1.9,
   },
 ];
 
-// BFS from (startCol, startRow) to (endCol, endRow) on map.
+// No trap or patrol within this BFS distance of the start tile.
+export const SPAWN_SAFE_RADIUS = 2;
+// Minimum hazard-free tiles between two different hazards on the critical route.
+export const REST_GAP = 2;
+
+const DIRS = [
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+];
+
+const tileKey = (c, r) => `${c},${r}`;
+
+// BFS from (startCol, startRow) to (endCol, endRow) on map. Flat typed arrays
+// and a head index instead of string keys and queue.shift(); visiting order
+// (and so the returned path) is unchanged.
 export function bfsPath(map, startCol, startRow, endCol, endRow, blocked = null) {
   const ROWS = map.length,
     COLS = map[0].length;
-  const parent = new Map();
-  parent.set(`${startCol},${startRow}`, null);
-  const queue = [[startCol, startRow]];
-  while (queue.length) {
-    const [col, row] = queue.shift();
-    if (col === endCol && row === endRow) {
+  const parent = new Int32Array(ROWS * COLS).fill(-2);
+  const queue = new Int32Array(ROWS * COLS);
+  const start = startRow * COLS + startCol;
+  const goal = endRow * COLS + endCol;
+  let head = 0,
+    tail = 0;
+  parent[start] = -1;
+  queue[tail++] = start;
+  while (head < tail) {
+    const cur = queue[head++];
+    if (cur === goal) {
       const path = [];
-      let key = `${endCol},${endRow}`;
-      while (key !== null) {
-        const [c, r] = key.split(",").map(Number);
-        path.unshift([c, r]);
-        key = parent.get(key);
-      }
-      return path;
+      for (let i = cur; i !== -1; i = parent[i]) path.push([i % COLS, (i / COLS) | 0]);
+      return path.reverse();
     }
-    for (const [dc, dr] of [
-      [0, -1],
-      [0, 1],
-      [-1, 0],
-      [1, 0],
-    ]) {
+    const col = cur % COLS,
+      row = (cur / COLS) | 0;
+    for (const [dc, dr] of DIRS) {
       const nc = col + dc,
         nr = row + dr;
-      const k = `${nc},${nr}`;
-      if (parent.has(k)) continue;
       if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const next = nr * COLS + nc;
+      if (parent[next] !== -2) continue;
       if (map[nr][nc] === 1) continue;
-      if (blocked && blocked.has(k) && !(nc === endCol && nr === endRow))
-        continue;
-      parent.set(k, `${col},${row}`);
-      queue.push([nc, nr]);
+      if (blocked && next !== goal && blocked.has(tileKey(nc, nr))) continue;
+      parent[next] = cur;
+      queue[tail++] = next;
     }
   }
   return null;
 }
 
-function hasHorizontalCorridor(map, col, row) {
-  const left = col > 0 && map[row][col - 1] === 0;
-  const right = col < map[0].length - 1 && map[row][col + 1] === 0;
-  return left || right;
+// Floor tiles within `radius` BFS steps of `from`, as "c,r" strings.
+export function tilesWithin(map, from, radius) {
+  const seen = new Set([tileKey(from.col, from.row)]);
+  let frontier = [[from.col, from.row]];
+  for (let d = 0; d < radius; d++) {
+    const next = [];
+    for (const [c, r] of frontier) {
+      for (const [dc, dr] of DIRS) {
+        const nc = c + dc,
+          nr = r + dr;
+        const k = tileKey(nc, nr);
+        if (seen.has(k) || !map[nr] || map[nr][nc] === undefined || map[nr][nc] === 1) continue;
+        seen.add(k);
+        next.push([nc, nr]);
+      }
+    }
+    frontier = next;
+  }
+  return seen;
+}
+
+// A true east-west corridor: walls above and below, floor to one side.
+function isHorizontalCorridor(map, col, row) {
+  const walled = map[row - 1][col] === 1 && map[row + 1][col] === 1;
+  const left = col > 0 && map[row][col - 1] !== 1;
+  const right = col < map[0].length - 1 && map[row][col + 1] !== 1;
+  return walled && (left || right);
 }
 
 function reachableFloors(map, blocked) {
@@ -136,18 +202,13 @@ function reachableFloors(map, blocked) {
   const queue = [[1, 1]];
   visited.add("1,1");
   const floors = [];
-  while (queue.length) {
-    const [col, row] = queue.shift();
-    if (!blocked.has(`${col},${row}`)) floors.push([col, row]);
-    for (const [dc, dr] of [
-      [0, -1],
-      [0, 1],
-      [-1, 0],
-      [1, 0],
-    ]) {
+  for (let head = 0; head < queue.length; head++) {
+    const [col, row] = queue[head];
+    if (!blocked.has(tileKey(col, row))) floors.push([col, row]);
+    for (const [dc, dr] of DIRS) {
       const nc = col + dc,
         nr = row + dr;
-      const k = `${nc},${nr}`;
+      const k = tileKey(nc, nr);
       if (visited.has(k)) continue;
       if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
       if (map[nr][nc] === 1) continue;
@@ -168,8 +229,146 @@ function floorNeighbourCount(map, r, c) {
   return count;
 }
 
-function _generateOnce(levelIndex, seed, configOverride = null) {
-  const config = configOverride || LEVEL_CONFIGS[levelIndex];
+// Maximal horizontal floor runs of at least minLen tiles: mummy patrol candidates.
+function horizontalRuns(map, minLen) {
+  const runs = [];
+  for (let r = 1; r < map.length - 1; r++) {
+    let start = -1;
+    for (let c = 1; c < map[0].length; c++) {
+      const open = c < map[0].length - 1 && map[r][c] !== 1;
+      if (open && start < 0) start = c;
+      if (!open && start >= 0) {
+        if (c - start >= minLen) runs.push({ row: r, start, end: c - 1 });
+        start = -1;
+      }
+    }
+  }
+  return runs;
+}
+
+function patrolTiles(traps) {
+  const tiles = new Set();
+  traps.forEach((t) => {
+    if (t.type !== "mummy") return;
+    for (let c = t.patrolCols[0]; c <= t.patrolCols[1]; c++) tiles.add(tileKey(c, t.row));
+  });
+  return tiles;
+}
+
+function hazardTiles(traps) {
+  return new Set(traps.filter((t) => t.type !== "mummy").map((t) => tileKey(t.col, t.row)));
+}
+
+function levelStops(level) {
+  return [
+    { col: 1, row: 1 },
+    level.key,
+    ...(level.key2 ? [level.key2] : []),
+    { col: level.exitCol, row: level.exitRow },
+  ];
+}
+
+// Ordered start → key (→ key2) → exit walk that avoids `blocked`, or null
+// when a leg is cut off. Dead-end detours appear twice (in and back out).
+export function safeRoute(map, stops, blocked = null) {
+  const route = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i],
+      b = stops[i + 1];
+    const leg = bfsPath(map, a.col, a.row, b.col, b.row, blocked);
+    if (!leg) return null;
+    route.push(...(i === 0 ? leg : leg.slice(1)));
+  }
+  return route;
+}
+
+// Fewest hazard-free tiles between two different hazards along the route
+// (Infinity with fewer than two). Re-crossing the same trap doesn't count.
+function minRestGap(route, hazards) {
+  let min = Infinity;
+  let last = -1;
+  route.forEach(([c, r], i) => {
+    const k = tileKey(c, r);
+    if (!hazards.has(k)) return;
+    if (last >= 0 && tileKey(...route[last]) !== k) min = Math.min(min, i - last - 1);
+    last = i;
+  });
+  return min;
+}
+
+// Fairness rules every shipped level must pass:
+//  - a start → key (→ key2) → chest route exists around every mummy patrol
+//    (flames, spikes and blades are timed, so they count as passable)
+//  - nothing dangerous within SPAWN_SAFE_RADIUS of the start
+//  - keys and the chest never sit under a hazard
+//  - at least REST_GAP safe tiles between hazards on that route
+export function isFair(level) {
+  const { map, traps } = level;
+  const stops = levelStops(level);
+  const patrol = patrolTiles(traps);
+  const hazards = hazardTiles(traps);
+  for (const k of tilesWithin(map, stops[0], SPAWN_SAFE_RADIUS)) {
+    if (patrol.has(k) || hazards.has(k)) return { fair: false, reason: "hazard in the spawn zone" };
+  }
+  for (const s of stops.slice(1)) {
+    const k = tileKey(s.col, s.row);
+    if (patrol.has(k) || hazards.has(k)) return { fair: false, reason: "key or chest under a hazard" };
+  }
+  const route = safeRoute(map, stops, patrol);
+  if (!route) return { fair: false, reason: "route cut off by a mummy patrol" };
+  const gap = minRestGap(route, hazards);
+  if (gap < REST_GAP) return { fair: false, reason: `only ${gap} rest tile(s) between hazards` };
+  return { fair: true, route };
+}
+
+// Quality metrics used for rejection sampling (and the dev audit).
+export function measureLevel(level) {
+  const { map, traps } = level;
+  const ROWS = map.length,
+    COLS = map[0].length;
+  const hazards = hazardTiles(traps);
+  const route = safeRoute(map, levelStops(level), patrolTiles(traps)) || [];
+  const routeSet = new Set(route.map(([c, r]) => tileKey(c, r)));
+  const open = (r, c) => map[r][c] !== 1;
+  let floors = 0,
+    deadEnds = 0,
+    junctions = 0;
+  const roomTiles = new Set();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (!open(r, c)) continue;
+      floors++;
+      const n = floorNeighbourCount(map, r, c);
+      if (n === 1) deadEnds++;
+      if (n >= 3) junctions++;
+      if (r + 1 < ROWS && c + 1 < COLS && open(r, c + 1) && open(r + 1, c) && open(r + 1, c + 1)) {
+        [[c, r], [c + 1, r], [c, r + 1], [c + 1, r + 1]].forEach(([x, y]) => roomTiles.add(tileKey(x, y)));
+      }
+    }
+  }
+  const hazardsOnCrit = [...routeSet].filter((k) => hazards.has(k)).length;
+  return {
+    critLen: routeSet.size,
+    deadEndRatio: deadEnds / floors,
+    junctionRatio: junctions / floors,
+    roomTiles: roomTiles.size,
+    hazardsOnCrit,
+    hazardDensity: routeSet.size ? (hazardsOnCrit * 10) / routeSet.size : 0,
+    minRestGap: minRestGap(route, hazards),
+    mummies: traps.filter((t) => t.type === "mummy").length,
+  };
+}
+
+// Lower is better: distance from the level's targets; a missing mummy
+// outweighs any length or density miss.
+function scoreLevel(m, config) {
+  const crit = (m.critLen - config.targetCrit) / config.targetCrit;
+  const density = (m.hazardDensity - config.targetDensity) / config.targetDensity;
+  const short = config.mummies - m.mummies;
+  return crit * crit + density * density + 4 * short * short;
+}
+
+function _generateOnce(levelIndex, seed, config) {
   const rng = mulberry32(seed);
 
   const COLS = 40,
@@ -254,204 +453,136 @@ function _generateOnce(levelIndex, seed, configOverride = null) {
   const key = { col: keyCol, row: keyRow };
 
   let key2 = null;
-  let key2Idx = -1;
   if (levelIndex >= 3) {
-    key2Idx = Math.floor(path.length * 0.7);
-    const [key2Col, key2Row] = path[key2Idx];
+    const [key2Col, key2Row] = path[Math.floor(path.length * 0.7)];
     key2 = { col: key2Col, row: key2Row };
   }
 
+  const stops = [{ col: 1, row: 1 }, key, ...(key2 ? [key2] : []), { col: exitCol, row: exitRow }];
   const traps = [];
+  // Tiles no trap may use: the spawn zone, keys and the chest.
   const occupied = new Set([
-    `${keyCol},${keyRow}`,
-    `${exitCol},${exitRow}`,
-    "1,1",
-    ...(key2 ? [`${key2.col},${key2.row}`] : []),
+    ...tilesWithin(map, stops[0], SPAWN_SAFE_RADIUS),
+    ...stops.map((s) => tileKey(s.col, s.row)),
   ]);
 
+  // Mummies first: they need open runs, and each patrol must leave a way round.
+  const patrol = new Set();
+  const patrolMargin = new Set();
+  const [minPatrol, maxPatrol] = config.patrolRange;
+  const runs = shuffle(rng, horizontalRuns(map, 3));
+  for (const run of runs) {
+    if (traps.length >= config.mummies) break;
+    const span = Math.min(run.end - run.start + 1, randInt(rng, minPatrol, maxPatrol));
+    const patrolStart = randInt(rng, run.start, run.end - span + 1);
+    const patrolEnd = patrolStart + span - 1;
+    const tiles = [];
+    for (let c = patrolStart; c <= patrolEnd; c++) tiles.push(tileKey(c, run.row));
+    if (tiles.some((k) => occupied.has(k) || patrolMargin.has(k))) continue;
+    if (!safeRoute(map, stops, new Set([...patrol, ...tiles]))) continue;
+    traps.push({
+      type: "mummy",
+      col: randInt(rng, patrolStart, patrolEnd),
+      row: run.row,
+      patrolCols: [patrolStart, patrolEnd],
+    });
+    tiles.forEach((k) => { patrol.add(k); occupied.add(k); });
+    for (let r = run.row - 1; r <= run.row + 1; r++) {
+      for (let c = patrolStart - 1; c <= patrolEnd + 1; c++) patrolMargin.add(tileKey(c, r));
+    }
+  }
+
+  // Static traps go along the route the player will actually walk.
+  const route = safeRoute(map, stops, patrol);
+  if (!route) return null;
+  const routeSet = new Set(route.map(([c, r]) => tileKey(c, r)));
+  const visits = new Map();
+  route.forEach(([c, r], i) => {
+    const k = tileKey(c, r);
+    if (!visits.has(k)) visits.set(k, []);
+    visits.get(k).push(i);
+  });
+
   const nonMummyTypes = config.trapTypes.filter((t) => t !== "mummy");
-  const hasMummy = config.trapTypes.includes("mummy");
+  const pickType = (c, r) => {
+    const type = nonMummyTypes[Math.floor(rng() * nonMummyTypes.length)];
+    return type === "blade" && !isHorizontalCorridor(map, c, r) ? "flame" : type;
+  };
+  const hazards = new Set();
+  const addTrap = (c, r) => {
+    const k = tileKey(c, r);
+    traps.push({ type: pickType(c, r), col: c, row: r });
+    occupied.add(k);
+    hazards.add(k);
+  };
+  // Every visit to tile k keeps REST_GAP clear tiles to the next hazard.
+  const hasRest = (k) => visits.get(k).every((i) => {
+    for (let g = -REST_GAP; g <= REST_GAP; g++) {
+      const j = i + g;
+      if (g === 0 || j < 0 || j >= route.length) continue;
+      const nk = tileKey(...route[j]);
+      if (nk !== k && hazards.has(nk)) return false;
+    }
+    return true;
+  });
 
-  const mummyCount = hasMummy ? Math.floor(config.trapCount * 0.3) : 0;
-  const regularCount = config.trapCount - mummyCount;
-
+  const regularCount = config.trapCount - config.mummies;
   const onPathCount = Math.round(regularCount * 0.6);
   const offPathCount = regularCount - onPathCount;
 
-  const pathSet = new Set(path.map(([c, r]) => `${c},${r}`));
-  const skipZone = new Set();
+  const onPath = shuffle(rng, [...visits.keys()].filter((k) => !occupied.has(k)));
   let placed = 0;
-
-  const pathIndices = path
-    .map((_, i) => i)
-    .filter(
-      (i) => i !== 0 && i !== path.length - 1 && i !== keyIdx && i !== key2Idx,
-    );
-  shuffle(rng, pathIndices);
-
-  for (const i of pathIndices) {
+  for (const k of onPath) {
     if (placed >= onPathCount) break;
-    const [c, r] = path[i];
-    const k = `${c},${r}`;
-    if (occupied.has(k) || skipZone.has(k)) continue;
-    let type = nonMummyTypes[Math.floor(rng() * nonMummyTypes.length)];
-    if (type === "blade" && !hasHorizontalCorridor(map, c, r)) type = "flame";
-    traps.push({ type, col: c, row: r });
-    occupied.add(k);
-    for (let gap = -2; gap <= 2; gap++) {
-      if (i + gap >= 0 && i + gap < path.length) {
-        skipZone.add(`${path[i + gap][0]},${path[i + gap][1]}`);
-      }
-    }
+    if (!hasRest(k)) continue;
+    addTrap(...k.split(",").map(Number));
     placed++;
   }
 
-  const offPathFloors = reachableFloors(
-    map,
-    new Set([...occupied, ...pathSet]),
-  ).filter(([c, r]) => map[r][c] !== 2);
-  shuffle(rng, offPathFloors);
-  for (let i = 0; i < offPathCount && i < offPathFloors.length; i++) {
-    const [c, r] = offPathFloors[i];
-    const k = `${c},${r}`;
-    if (occupied.has(k)) continue;
-    let type = nonMummyTypes[Math.floor(rng() * nonMummyTypes.length)];
-    if (type === "blade" && !hasHorizontalCorridor(map, c, r)) type = "flame";
-    traps.push({ type, col: c, row: r });
-    occupied.add(k);
-  }
+  const offPath = shuffle(rng, reachableFloors(map, new Set([...occupied, ...routeSet]))
+    .filter(([c, r]) => map[r][c] === 0));
+  offPath.slice(0, offPathCount).forEach(([c, r]) => addTrap(c, r));
 
-  const [minPatrol, maxPatrol] = config.patrolRange;
-
-  function longestFloorRun(rowIdx) {
-    const row = map[rowIdx];
-    let best = null,
-      cur = null;
-    for (let c = 1; c < row.length - 1; c++) {
-      if (row[c] !== 1) {
-        if (!cur) cur = { start: c, end: c };
-        else cur.end = c;
-        if (!best || cur.end - cur.start > best.end - best.start)
-          best = { ...cur };
-      } else {
-        cur = null;
-      }
-    }
-    return best;
-  }
-
-  const candidateRows = [];
-  for (let r = 2; r <= ROWS - 3; r++) candidateRows.push(r);
-  shuffle(rng, candidateRows);
-
-  let mummiesPlaced = 0;
-  for (const rowIdx of candidateRows) {
-    if (mummiesPlaced >= mummyCount) break;
-    const run = longestFloorRun(rowIdx);
-    if (!run) continue;
-    const runLen = run.end - run.start + 1;
-    if (runLen < 2) continue;
-
-    const span = Math.min(runLen, randInt(rng, minPatrol, maxPatrol));
-    const maxStart = run.end - span + 1;
-    if (maxStart < run.start) continue;
-    const patrolStart = randInt(rng, run.start, maxStart);
-    const patrolEnd = patrolStart + span - 1;
-
-    const mummyCol = randInt(rng, patrolStart, patrolEnd);
-    const k = `${mummyCol},${rowIdx}`;
-    if (occupied.has(k)) continue;
-
-    let valid = true;
-    for (let c = patrolStart; c <= patrolEnd; c++) {
-      if (map[rowIdx][c] === 1 || occupied.has(`${c},${rowIdx}`)) {
-        valid = false;
-        break;
-      }
-    }
-    if (!valid) continue;
-
-    traps.push({
-      type: "mummy",
-      col: mummyCol,
-      row: rowIdx,
-      patrolCols: [patrolStart, patrolEnd],
-    });
-    for (let c = patrolStart; c <= patrolEnd; c++)
-      occupied.add(`${c},${rowIdx}`);
-    mummiesPlaced++;
-  }
-
-  for (let i = mummiesPlaced; i < mummyCount; i++) {
-    const floors = reachableFloors(map, occupied).filter(
-      ([c, r]) => map[r][c] !== 2,
-    );
-    shuffle(rng, floors);
-    if (floors.length === 0) break;
-    const [c, r] = floors[0];
-    traps.push({ type: "flame", col: c, row: r });
-    occupied.add(`${c},${r}`);
-  }
-
-  const placedTypes = new Set(
-    traps.filter((t) => t.type !== "mummy").map((t) => t.type),
-  );
+  const placedTypes = new Set(traps.filter((t) => t.type !== "mummy").map((t) => t.type));
   for (const requiredType of nonMummyTypes) {
     if (placedTypes.has(requiredType)) continue;
-    const candidates = reachableFloors(map, occupied).filter(([c, r]) => {
-      if (map[r][c] === 2) return false;
-      if (requiredType === "blade" && !hasHorizontalCorridor(map, c, r))
-        return false;
-      return true;
-    });
-    shuffle(rng, candidates);
-    if (candidates.length === 0) continue;
-    const [c, r] = candidates[0];
+    const spots = reachableFloors(map, new Set([...occupied, ...routeSet])).filter(([c, r]) =>
+      map[r][c] === 0 && (requiredType !== "blade" || isHorizontalCorridor(map, c, r)));
+    if (spots.length === 0) continue;
+    const [c, r] = spots[Math.floor(rng() * spots.length)];
     traps.push({ type: requiredType, col: c, row: r });
-    occupied.add(`${c},${r}`);
+    occupied.add(tileKey(c, r));
     placedTypes.add(requiredType);
   }
 
   return { map, key, key2, traps, exitCol, exitRow };
 }
 
+const CANDIDATES = 6;
+const MAX_ATTEMPTS = 30;
+
+// Rejection sampling: build several fair candidates from consecutive seeds
+// and keep the one closest to the level's targets. Deterministic per seed.
 export function generateLevel(levelIndex, seed) {
-  const maxRetries = levelIndex >= 3 ? 35 : 20;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const result = _generateOnce(levelIndex, seed + attempt);
-    if (!result) continue;
-
-    const { map, key, key2, traps, exitCol, exitRow } = result;
-
-    const blocked = new Set();
-    traps.forEach((t) => {
-      if (t.type === "mummy") {
-        for (let c = t.patrolCols[0]; c <= t.patrolCols[1]; c++)
-          blocked.add(`${c},${t.row}`);
-      } else {
-        blocked.add(`${t.col},${t.row}`);
-      }
-    });
-
-    const solvable =
-      levelIndex >= 3
-        ? bfsPath(map, 1, 1, key.col, key.row, blocked) &&
-          bfsPath(map, key.col, key.row, key2.col, key2.row, blocked) &&
-          bfsPath(map, key2.col, key2.row, exitCol, exitRow, blocked)
-        : bfsPath(map, 1, 1, key.col, key.row, blocked) &&
-          bfsPath(map, key.col, key.row, exitCol, exitRow, blocked);
-
-    if (solvable) return result;
+  const config = LEVEL_CONFIGS[levelIndex];
+  let best = null;
+  let bestScore = Infinity;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (best && attempt >= CANDIDATES) break;
+    const level = _generateOnce(levelIndex, seed + attempt, config);
+    if (!level || !isFair(level).fair) continue;
+    const score = scoreLevel(measureLevel(level), config);
+    if (score < bestScore) {
+      best = level;
+      bestScore = score;
+    }
   }
+  if (best) return best;
 
-  const baseConfig = LEVEL_CONFIGS[levelIndex];
-  const widerConfig = {
-    ...baseConfig,
-    loopFactor: Math.min(baseConfig.loopFactor * 2, 0.5),
-  };
+  const widerConfig = { ...config, loopFactor: Math.min(config.loopFactor * 2, 0.5) };
   return (
-    _generateOnce(levelIndex, seed + maxRetries, widerConfig) ||
-    _generateOnce(0, seed)
+    _generateOnce(levelIndex, seed + MAX_ATTEMPTS, widerConfig) ||
+    _generateOnce(0, seed, LEVEL_CONFIGS[0])
   );
 }
 

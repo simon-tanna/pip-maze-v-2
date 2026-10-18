@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
-import { LEVEL_CONFIGS, generateLevel, bfsPath, criticalPath } from '../lib/generator.js';
+import { LEVEL_CONFIGS, generateLevel, criticalPath, isFair } from '../lib/generator.js';
 import { CHARACTER_CONFIGS, drawChest, drawKey } from '../lib/graphics.js';
 import { P, LIGHT } from '../lib/palette.js';
 import { drawChamber, planDecor } from '../lib/environment.js';
@@ -404,55 +404,10 @@ export class GameScene extends Phaser.Scene {
     if (gIdx !== -1) this._mummyGraphics.splice(gIdx, 1);
   }
 
+  // Dev guard: generateLevel only ships fair levels, so this should never fire.
   validatePaths() {
-    const levelData = this.currentLevel;
-    if (!levelData.key) return;
-
-    const blocked = new Set();
-    (levelData.traps || []).forEach((trap) => {
-      if (trap.type === "mummy") {
-        for (let c = trap.patrolCols[0]; c <= trap.patrolCols[1]; c++)
-          blocked.add(`${c},${trap.row}`);
-      } else {
-        blocked.add(`${trap.col},${trap.row}`);
-      }
-    });
-
-    const { col: keyCol, row: keyRow } = levelData.key;
-    const key2 = levelData.key2 || null;
-    let exitCol = -1,
-      exitRow = -1;
-    this.map.forEach((row, ri) =>
-      row.forEach((tile, ci) => {
-        if (tile === 3) {
-          exitCol = ci;
-          exitRow = ri;
-        }
-      }),
-    );
-
-    if (
-      !bfsPath(this.map, this.startCol, this.startRow, keyCol, keyRow, blocked)
-    )
-      console.warn(
-        `⚠ Level ${this.levelIndex + 1}: No safe path from START to KEY — check trap placement`,
-      );
-
-    if (key2) {
-      if (!bfsPath(this.map, keyCol, keyRow, key2.col, key2.row, blocked))
-        console.warn(
-          `⚠ Level ${this.levelIndex + 1}: No safe path from KEY1 to KEY2 — check trap placement`,
-        );
-      if (!bfsPath(this.map, key2.col, key2.row, exitCol, exitRow, blocked))
-        console.warn(
-          `⚠ Level ${this.levelIndex + 1}: No safe path from KEY2 to CHEST — check trap placement`,
-        );
-    } else {
-      if (!bfsPath(this.map, keyCol, keyRow, exitCol, exitRow, blocked))
-        console.warn(
-          `⚠ Level ${this.levelIndex + 1}: No safe path from KEY to CHEST — check trap placement`,
-        );
-    }
+    const { fair, reason } = isFair(this.currentLevel);
+    if (!fair) console.warn(`⚠ Level ${this.levelIndex + 1}: unfair layout (${reason})`);
   }
 
   setupInput() {
