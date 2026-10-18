@@ -215,3 +215,21 @@ export function drawChamber(scene, map, seed, { key = 'env-chamber', decor = [] 
   dt.render();
   return scene.add.image(0, 0, key).setOrigin(0, 0);
 }
+
+// Menu backdrop: a wall band across the top, flagstones below, two braziers.
+// Lit by the scene's LightsManager, which this enables.
+export function drawTempleBackdrop(scene, { ambient, braziers = [[3, 4], [16, 4]] } = {}) {
+  const map = Array.from({ length: 15 }, (_, r) => Array.from({ length: 20 }, (_, c) =>
+    (r < 4 || r === 14 || c === 0 || c === 19 ? 1 : 0)));
+  scene.lights.enable().setAmbientColor(ambient);
+  drawChamber(scene, map, 0xD00D, { key: 'env-backdrop' }).setLighting(true).setDepth(-10);
+  braziers.forEach(([c, r]) => {
+    const x = c * T + T / 2;
+    const y = r * T + T / 2;
+    scene.add.image(x, y, HAZARD_KEYS.nozzle(1)).setDepth(-9);
+    scene.add.sprite(x, y + 8, HAZARD_KEYS.flame(0)).setOrigin(0.5, 1).setDepth(-8).play('hz-flame');
+    const light = scene.lights.addLight(x, y - 12, 260, P.FIRE, 1.6);
+    scene.tweens.add({ targets: light, intensity: 1.9, duration: 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  });
+  return map;
+}

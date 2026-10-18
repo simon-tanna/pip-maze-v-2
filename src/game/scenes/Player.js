@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
 import { hideDpad } from '../lib/dpad.js';
+import { P, LIGHT, css } from '../lib/palette.js';
+import { drawTempleBackdrop } from '../lib/environment.js';
+import { TEXT, FONT, createButton } from '../lib/ui.js';
 import {
   getAllPlayers,
   addPlayer,
@@ -25,17 +28,9 @@ export class PlayerScene extends Phaser.Scene {
     hideDpad();
     this.time.delayedCall(200, () => { this.inputReady = true; });
 
-    this.add.rectangle(480, 360, 960, 720, 0x0d0d0d);
-
-    this.add.text(480, 100, 'DOOM MAZE', {
-      fontFamily: '"Black Ops One", sans-serif',
-      fontSize: '80px',
-      color: '#cc0000',
-      shadowOffsetX: 3,
-      shadowOffsetY: 3,
-      shadowColor: '#440000',
-      shadowFill: true,
-    }).setOrigin(0.5);
+    drawTempleBackdrop(this, { ambient: LIGHT.AMBIENT });
+    this.add.text(480, 98, 'DOOM MAZE', TEXT.logo(84)).setOrigin(0.5);
+    this.add.text(480, 160, "PIP'S TEMPLE ADVENTURE", TEXT.label(15, P.SAND)).setOrigin(0.5);
 
     this.cursors = this.input.keyboard.createCursorKeys();
 
@@ -77,12 +72,7 @@ export class PlayerScene extends Phaser.Scene {
     this._clearStateTexts();
     this._mode = 'entry';
 
-    const sub = this.add.text(480, 215, 'ENTER YOUR NAME', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#555555',
-      letterSpacing: 3,
-    }).setOrigin(0.5);
+    const sub = this.add.text(480, 270, 'ENTER YOUR NAME', TEXT.label(16, P.STONE_LIGHT)).setOrigin(0.5);
     this._stateTexts.push(sub);
 
     const input = document.createElement('input');
@@ -90,18 +80,21 @@ export class PlayerScene extends Phaser.Scene {
     input.maxLength = 16;
     input.placeholder = 'Your name…';
     input.style.cssText = [
-      'background:#1a1a1a',
-      'color:#fff',
-      'border:2px solid #cc0000',
-      'font-family:monospace',
-      'font-size:24px',
+      `background:${css(P.SHADOW)}`,
+      `color:${css(P.CREAM)}`,
+      `border:3px solid ${css(P.INK)}`,
+      `box-shadow:inset 0 3px 0 ${css(P.STONE_DARK)}, 0 0 0 2px ${css(P.FIRE)}`,
+      `font-family:${FONT.body.replace(/"/g, "'")}`,
+      'font-size:26px',
       'padding:10px 16px',
       'outline:none',
-      'width:280px',
+      'width:300px',
       'text-align:center',
+      `caret-color:${css(P.FIRE_HOT)}`,
     ].join(';');
 
     const domEl = this.add.dom(480, 360, input);
+    this._stateTexts.push(this.add.text(480, 412, 'PRESS ENTER TO BEGIN', TEXT.label(13, P.FIRE_HOT)).setOrigin(0.5));
     this._domEls.push(domEl);
     this.time.delayedCall(50, () => input.focus());
 
@@ -127,12 +120,7 @@ export class PlayerScene extends Phaser.Scene {
     this._clearStateTexts();
     this._mode = 'select';
 
-    const sub = this.add.text(480, 215, 'SELECT PLAYER', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#555555',
-      letterSpacing: 3,
-    }).setOrigin(0.5);
+    const sub = this.add.text(480, 236, 'SELECT PLAYER', TEXT.label(16, P.STONE_LIGHT)).setOrigin(0.5);
     this._stateTexts.push(sub);
 
     this._playerOptions = [
@@ -147,27 +135,20 @@ export class PlayerScene extends Phaser.Scene {
 
     this._playerOptions.forEach((opt, i) => {
       const y  = topY + i * rowH;
-      const bg = this.add.rectangle(cx, y, 420, 54, 0x1a1a1a)
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true });
-      const label = this.add.text(cx, y, this._optionLabel(opt, false), {
-        fontFamily: 'monospace',
-        fontSize: '22px',
-        color: '#555555',
-        fontStyle: 'bold',
-      }).setOrigin(0.5);
-
-      bg.on('pointerover', () => {
+      const bg = createButton(this, cx, y, this._optionLabel(opt), {
+        width: 420, height: 54, size: 22,
+        onClick: () => {
+          if (!this.inputReady) return;
+          this._selectIndex = i;
+          this._confirmSelect();
+        },
+      });
+      bg.on('hover', () => {
         this._selectIndex = i;
         this._refreshSelectList();
       });
-      bg.on('pointerdown', () => {
-        if (!this.inputReady) return;
-        this._selectIndex = i;
-        this._confirmSelect();
-      });
 
-      this._listRows.push({ bg, label });
+      this._listRows.push({ bg });
     });
 
     this._refreshSelectList();
@@ -180,19 +161,13 @@ export class PlayerScene extends Phaser.Scene {
     this._confirmSelect();
   }
 
-  _optionLabel(opt, active) {
-    const prefix = active ? '▶  ' : '     ';
-    if (opt.type === 'new') return `${prefix}NEW PLAYER`;
-    return `${prefix}${opt.name}  ◉${opt.coins}`;
+  _optionLabel(opt) {
+    if (opt.type === 'new') return '+ NEW PLAYER';
+    return `${opt.name.toUpperCase()}   ${opt.coins} GOLD`;
   }
 
   _refreshSelectList() {
-    this._listRows.forEach(({ bg, label }, i) => {
-      const active = i === this._selectIndex;
-      bg.setFillStyle(active ? 0xcc0000 : 0x1a1a1a);
-      label.setColor(active ? '#ffffff' : '#555555');
-      label.setText(this._optionLabel(this._playerOptions[i], active));
-    });
+    this._listRows.forEach(({ bg }, i) => bg.setFocused(i === this._selectIndex));
   }
 
   _confirmSelect() {
@@ -206,7 +181,7 @@ export class PlayerScene extends Phaser.Scene {
   }
 
   _clearSelectList() {
-    this._listRows.forEach(({ bg, label }) => { bg.destroy(); label.destroy(); });
+    this._listRows.forEach(({ bg }) => bg.destroy());
     this._listRows = [];
     this._playerOptions = [];
     this.input.keyboard.off('keydown-ENTER', this._onEnterSelect, this);
@@ -224,11 +199,7 @@ export class PlayerScene extends Phaser.Scene {
 
   _showError(msg) {
     if (this._errorText) this._errorText.destroy();
-    this._errorText = this.add.text(480, 440, msg, {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#ff4444',
-    }).setOrigin(0.5);
+    this._errorText = this.add.text(480, 440, msg, TEXT.body(18, P.FIRE_HOT)).setOrigin(0.5);
     this.time.delayedCall(1500, () => {
       if (this._errorText) { this._errorText.destroy(); this._errorText = null; }
     });
