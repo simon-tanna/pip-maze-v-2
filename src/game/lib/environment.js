@@ -233,3 +233,98 @@ export function drawTempleBackdrop(scene, { ambient, braziers = [[3, 4], [16, 4]
   });
   return map;
 }
+
+// ── Boss arena ────────────────────────────────────────────
+export const PILLAR = { w: 96, h: 112, originY: 48 / 112 };
+export const LAVA_TILE = { w: 16, h: 32 };
+
+function paintPillar(g) {
+  rect(g, P.INK, 0, 0, 96, 112);
+  rect(g, P.STONE, 1, 1, 94, 94);
+  rect(g, P.SAND, 1, 1, 94, 1);
+  rect(g, P.STONE_LIGHT, 1, 2, 94, 2);
+  rect(g, P.STONE_LIGHT, 1, 1, 2, 94);
+  rect(g, P.STONE_DARK, 93, 1, 2, 94);
+  // Carved inner border.
+  rect(g, P.STONE_DARK, 8, 8, 80, 1);
+  rect(g, P.STONE_DARK, 8, 8, 1, 80);
+  rect(g, P.STONE_LIGHT, 9, 87, 80, 1);
+  rect(g, P.STONE_LIGHT, 87, 9, 1, 79);
+  const rng = mulberry32(0x9111A);
+  for (let i = 0; i < 24; i++) {
+    rect(g, rng() < 0.5 ? P.STONE_DARK : P.STONE_LIGHT, 10 + Math.floor(rng() * 76), 10 + Math.floor(rng() * 76));
+  }
+  // Front face.
+  rect(g, P.STONE_SIDE, 1, 96, 94, 15);
+  rect(g, P.SAND, 1, 95, 94, 1);
+  rect(g, P.STONE_DARK, 1, 96, 94, 2);
+  rect(g, P.STONE_DARK, 1, 103, 94, 1);
+  for (let x = 8; x < 96; x += 16) rect(g, P.STONE_DARK, x, 98, 1, 5);
+  for (let x = 0; x < 96; x += 16) rect(g, P.STONE_DARK, x, 104, 1, 6);
+}
+
+// 5x7 pixel glyphs; one accent colour (CURSE) instead of neon rainbows.
+const GLYPHS = [
+  ['..#..', '.###.', '..#..', '..#..', '.#.#.', '#...#', '#...#'],
+  ['#...#', '.#.#.', '..#..', '.#.#.', '#...#', '.....', '#####'],
+  ['###..', '#..#.', '###..', '#..#.', '#...#', '#...#', '#...#'],
+  ['..#..', '..#..', '#####', '..#..', '.#.#.', '#...#', '.....'],
+  ['#.#.#', '#.#.#', '.###.', '..#..', '..#..', '..#..', '.###.'],
+];
+
+function paintRunes(g, seed) {
+  const rng = mulberry32(seed);
+  [14, 76].forEach((x0) => {
+    for (let i = 0; i < 3; i++) {
+      const glyph = GLYPHS[Math.floor(rng() * GLYPHS.length)];
+      const y0 = 16 + i * 24;
+      glyph.forEach((row, y) => [...row].forEach((ch, x) => {
+        if (ch !== '#') return;
+        rect(g, P.CURSE_DARK, x0 + x, y0 + y + 1);
+        rect(g, P.CURSE, x0 + x, y0 + y);
+      }));
+    }
+  });
+}
+
+function paintLava(g) {
+  rect(g, P.EMBER, 0, 0, 16, 32);
+  rect(g, P.FIRE, 3, 0, 10, 32);
+  rect(g, P.FIRE_HOT, 6, 0, 4, 32);
+  [[7, 2, 2, 6], [6, 14, 1, 4], [8, 22, 2, 5]].forEach(([x, y, w, h]) => rect(g, P.FIRE_CORE, x, y, w, h));
+  [[1, 6], [13, 12], [2, 24], [14, 28]].forEach(([x, y]) => rect(g, P.EMBER_DARK, x, y, 2, 2));
+}
+
+function paintLavaPool(g, frame) {
+  const bands = [[52, 13, P.EMBER_DARK], [48, 11, P.EMBER], [40, 9, P.FIRE], [28, 6, P.FIRE_HOT], [14, 3, P.FIRE_CORE]];
+  bands.forEach(([rx, ry, color], i) => {
+    const wob = frame === 1 && i >= 3 ? 2 : 0;
+    for (let y = -ry; y <= ry; y++) {
+      const w = Math.round((rx - wob) * Math.sqrt(1 - (y / (ry + 0.5)) ** 2));
+      rect(g, color, 52 - w, 13 + y, w * 2, 1);
+    }
+  });
+}
+
+export function bakeBossArenaTextures(scene) {
+  const bake = (key, w, h, paint) => {
+    if (scene.textures.exists(key)) return;
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    paint(g);
+    g.generateTexture(key, w, h);
+    g.destroy();
+  };
+  bake('env-pillar', PILLAR.w, PILLAR.h, paintPillar);
+  for (let i = 0; i < 4; i++) bake(`env-runes-${i}`, 96, 96, (g) => paintRunes(g, 0x5EED + i * 97));
+  bake('env-lava', LAVA_TILE.w, LAVA_TILE.h, paintLava);
+  bake('env-lava-pool-0', 104, 27, (g) => paintLavaPool(g, 0));
+  bake('env-lava-pool-1', 104, 27, (g) => paintLavaPool(g, 1));
+  if (!scene.anims.exists('env-lava-pool')) {
+    scene.anims.create({
+      key: 'env-lava-pool',
+      frames: [{ key: 'env-lava-pool-0' }, { key: 'env-lava-pool-1' }],
+      frameRate: 4,
+      repeat: -1,
+    });
+  }
+}

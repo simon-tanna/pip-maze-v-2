@@ -1,20 +1,19 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
-import { LEVEL_CONFIGS, mulberry32 } from '../lib/generator.js';
-import {
-  CHARACTER_CONFIGS,
-  createPlayer,
-  drawPillar,
-  drawPillarRunes,
-  drawLavaGlow,
-  drawLavaChannel,
-  drawLavaPool,
-  bakeBossFloorTextures,
-  drawBossFloorTile,
-} from '../lib/graphics.js';
+import { LEVEL_CONFIGS } from '../lib/generator.js';
+import { CHARACTER_CONFIGS } from '../lib/graphics.js';
 import { showFireButton } from '../lib/dpad.js';
+import { P, LIGHT } from '../lib/palette.js';
+import { drawChamber, bakeBossArenaTextures, PILLAR, LAVA_TILE } from '../lib/environment.js';
+import { HAZARD_KEYS } from '../lib/hazard-art.js';
+import { createHero } from '../lib/hero.js';
+import { createWorldFx, flash, iris, reducedMotion, shake } from '../lib/fx.js';
+import { TEXT, createButton } from '../lib/ui.js';
 
-const TINT_RED = 0xff0000;
+const TINT_RED = P.BLOOD;
+// Warm multiply grade that pulls the painted troll toward the temple palette.
+const BOSS_GRADE = 0xead2bc;
+const ARENA_AMBIENT = 0x9a8890;
 
 export class BossScene extends Phaser.Scene {
   constructor() {
@@ -50,32 +49,16 @@ export class BossScene extends Phaser.Scene {
     this._heroFlashTimer = null;
     this._bossFlashTimer = null;
 
-    this._heartIcons     = [];
-    this._eyeIcons       = [];
     this._allGraphics    = [];
     this._domHandlers    = [];
 
-    this.add.rectangle(480, 360, 960, 720, 0x1a1208);
-
-    bakeBossFloorTextures(this);
-    const floorRng = mulberry32(0xB055F100);
-    for (let row = 0; row < 15; row++) {
-      for (let col = 0; col < 20; col++) {
-        const r = floorRng();
-        const variant = r < 0.80 ? 0
-                      : r < 0.90 ? 1
-                      : r < 0.97 ? 2
-                      : 3;
-        const tile = drawBossFloorTile(
-          this,
-          col * TILE_SIZE + TILE_SIZE / 2,
-          row * TILE_SIZE + TILE_SIZE / 2,
-          variant,
-        );
-        tile.setDepth(0.1);
-        this._allGraphics.push(tile);
-      }
-    }
+    this.lights.enable().setAmbientColor(ARENA_AMBIENT);
+    this.fx = createWorldFx(this);
+    bakeBossArenaTextures(this);
+    const arenaMap = Array.from({ length: 15 }, () => Array(20).fill(0));
+    drawChamber(this, arenaMap, 0xB055F100, { key: 'env-boss-floor' })
+      .setLighting(true).setTint(0xe6cfc4).setDepth(0.1);
+    this._lavaStrips = [];
 
     const PILLAR_POSITIONS = [
       { x: 192, y: 216 },
@@ -86,47 +69,31 @@ export class BossScene extends Phaser.Scene {
 
     this._pillarGroup = this.physics.add.staticGroup();
 
-    PILLAR_POSITIONS.forEach(({ x, y }) => {
-      const glow = drawLavaGlow(this, x, y, 140, 160);
-      glow.setDepth(0.3);
-      this._allGraphics.push(glow);
-
-      const pg = drawPillar(this, x, y);
-      pg.setDepth(0.4);
-      this._allGraphics.push(pg);
-
-      const runes = drawPillarRunes(this, x, y, 0x90FF0000 ^ (x * 31 + y));
-      runes.setDepth(0.5);
-      this._allGraphics.push(runes);
-
-      const channel = drawLavaChannel(this, x, y, 96, { width: 8, midCrack: true });
-      channel.setDepth(0.6);
-      this._allGraphics.push(channel);
-
-      const pool = drawLavaPool(this, x, y + 48 + 4, 96, 22);
-      pool.setDepth(0.6);
-      this._allGraphics.push(pool);
+    PILLAR_POSITIONS.forEach(({ x, y }, i) => {
+      this.add.sprite(x, y + 72, 'env-lava-pool-0').setDepth(0.45).play('env-lava-pool');
+      this.add.image(x, y, 'env-pillar').setOrigin(0.5, PILLAR.originY).setDepth(0.4).setLighting(true);
+      this._lavaStrips.push(this.add.tileSprite(x, y + 8, 8, 96, 'env-lava').setDepth(0.6));
+      const runes = this.add.image(x, y, `env-runes-${i}`).setDepth(0.5);
+      this.tweens.add({
+        targets: runes, alpha: { from: 0.5, to: 1 }, duration: 900 + i * 130, delay: i * 150,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+      const light = this.lights.addLight(x, y + 72, 240, LIGHT.FLAME, 1.6);
+      this.tweens.add({ targets: light, intensity: 1.75, duration: 140 + i * 20, yoyo: true, repeat: -1 });
 
       const pillarBody = this.add.rectangle(x, y, 96, 96, 0x000000, 0);
       this.physics.add.existing(pillarBody, true);
       this._pillarGroup.add(pillarBody);
     });
 
-    const wallChannels = [
-      { x: 24,  y: 360, height: 660 },
-      { x: 936, y: 360, height: 660 },
-    ];
-    wallChannels.forEach(({ x, y, height }) => {
-      const wGlow = drawLavaGlow(this, x, y, 80, height + 40);
-      wGlow.setDepth(0.3);
-      this._allGraphics.push(wGlow);
-      const wCh = drawLavaChannel(this, x, y, height, { width: 10, midCrack: false });
-      wCh.setDepth(0.6);
-      this._allGraphics.push(wCh);
+    [24, 936].forEach((x) => {
+      this._lavaStrips.push(this.add.tileSprite(x, 360, LAVA_TILE.w - 4, 660, 'env-lava').setDepth(0.6));
+      [220, 500].forEach((y) => this.lights.addLight(x, y, 240, LIGHT.FLAME, 1.4));
     });
 
-    this._hero = createPlayer(this, 480, 620);
-    this._hero.setDepth(5);
+    this._heroRig = createHero(this, 480, 620, undefined, { depth: 5, fx: this.fx });
+    this._hero = this._heroRig.sprite;
+    this._torch = this.lights.addLight(480, 620, 220, LIGHT.TORCH, 1.3);
     this.physics.add.existing(this._hero);
     this._hero.body.setCollideWorldBounds(true);
     this._hero.body.setSize(TILE_SIZE * 0.6, TILE_SIZE * 0.6);
@@ -156,14 +123,21 @@ export class BossScene extends Phaser.Scene {
     sizeToTarget();
 
     this._bossGfx.play('troll-idle');
+    this._gradeBoss();
+    this._bossGfx.enableFilters();
+    this._bossGfx.filters.internal.addColorMatrix().colorMatrix.saturate(-0.25);
+    this._bossGfx.filters.internal.addGlow(P.INK, 3, 0, 1, false, 10, 3);
     this._allGraphics.push(this._bossGfx);
+    this._aimMarks = Array.from({ length: 6 }, () => this.add.image(0, 0, HAZARD_KEYS.arrow)
+      .setScale(1.5).setTint(P.FIRE_HOT).setDepth(4).setVisible(false));
+    this._aiming = false;
 
     this._bossBody = this.add.rectangle(480, BOSS_START_Y, BOSS_W, BOSS_H, 0x000000, 0);
     this.physics.add.existing(this._bossBody);
     this._bossBody.body.setCollideWorldBounds(false);
     this._bossBody.body.allowGravity = false;
 
-    this._crackGfx = this.add.graphics();
+    this._crackGfx = this.add.graphics().setDepth(0.8);
     this._allGraphics.push(this._crackGfx);
 
     this.physics.world.on('worldbounds', (body) => {
@@ -174,7 +148,9 @@ export class BossScene extends Phaser.Scene {
       }
     });
 
-    this._buildHUD();
+    this.scene.launch('HudScene', { mode: 'boss', source: 'BossScene', heroHp: 3, bossMax: 3 });
+    this.cameras.main.filters.external.addVignette(0.5, 0.5, 1.0, 0.25, P.INK);
+    iris(this, 480, 620, 'open', 420);
 
     this.physics.add.overlap(
       this._hero,
@@ -198,8 +174,6 @@ export class BossScene extends Phaser.Scene {
       this.time.removeAllEvents();
       this._allGraphics.forEach(g => { if (g && g.destroy) g.destroy(); });
       this._projectiles.forEach(p => { if (p && p.destroy) p.destroy(); });
-      this._heartIcons.forEach(h => { if (h && h.destroy) h.destroy(); });
-      this._eyeIcons.forEach(e => { if (e && e.destroy) e.destroy(); });
 
       this._domHandlers.forEach(({ el, type, fn }) => {
         el.removeEventListener(type, fn);
@@ -212,30 +186,12 @@ export class BossScene extends Phaser.Scene {
     this._playBossEntrance(BOSS_LAND_Y);
   }
 
-  _buildHUD() {
-    for (let i = 0; i < 3; i++) {
-      const heart = this.add.graphics();
-      heart.fillStyle(0xcc0000, 1);
-      heart.fillCircle(0, 0, 10);
-      heart.x = 28 + i * 30;
-      heart.y = 24;
-      heart.setDepth(50).setScrollFactor(0);
-      this._heartIcons.push(heart);
-      this._allGraphics.push(heart);
-    }
+  hud(msg) {
+    this.events.emit('hud', msg);
+  }
 
-    for (let i = 0; i < 3; i++) {
-      const eye = this.add.graphics();
-      eye.fillStyle(0xffe000, 1);
-      eye.fillCircle(0, 0, 10);
-      eye.fillStyle(0x000000, 1);
-      eye.fillRect(-2, -8, 4, 16);
-      eye.x = 960 - 28 - (2 - i) * 30;
-      eye.y = 24;
-      eye.setDepth(50).setScrollFactor(0);
-      this._eyeIcons.push(eye);
-      this._allGraphics.push(eye);
-    }
+  _gradeBoss() {
+    this._bossGfx.setTint(BOSS_GRADE).setTintMode(Phaser.TintModes.MULTIPLY);
   }
 
   _playBossEntrance(landY) {
@@ -248,7 +204,7 @@ export class BossScene extends Phaser.Scene {
       onUpdate: (tween) => {
         const t = tween.progress;
         this._crackGfx.clear();
-        this._crackGfx.fillStyle(0x0a0604, 1);
+        this._crackGfx.fillStyle(P.INK, 1);
         this._crackGfx.fillEllipse(480, landY + 90, 60 * t, 16);
       },
     });
@@ -259,12 +215,10 @@ export class BossScene extends Phaser.Scene {
       duration: 1200,
       ease: 'Cubic.easeIn',
       onComplete: () => {
-        this.cameras.main.shake(300, 0.018);
+        shake(this, 300, 0.012);
+        this.fx.puff.explode(16, this._bossBody.x, landY + 90);
 
-        const toast = this.add.text(480, 280, 'GRAARGH!', {
-          fontSize: '52px', color: '#cc0000', fontStyle: 'bold',
-          stroke: '#440000', strokeThickness: 6,
-        }).setOrigin(0.5).setDepth(100);
+        const toast = this.add.text(480, 280, 'GRAARGH!', TEXT.logo(56)).setOrigin(0.5).setDepth(100);
 
         this.tweens.add({
           targets: toast,
@@ -286,6 +240,10 @@ export class BossScene extends Phaser.Scene {
     this._bossState = 'idle';
     this._setBossVelocity(0, 0);
     this._bossGfx.play('troll-idle', true);
+    // Telegraph inside the existing 1500ms idle: the last 500ms shows the aim.
+    this.time.delayedCall(1000, () => {
+      if (this._bossState === 'idle') this._setAiming(true);
+    });
     this._bossStateTimer = this.time.delayedCall(1500, () => {
       if (this._bossState !== 'idle') return;
       this._startBossCharge();
@@ -297,6 +255,7 @@ export class BossScene extends Phaser.Scene {
     if (this._clubTimer) { this._clubTimer.remove(false); this._clubTimer = null; }
     this._clubActive = false;
     this._bossState = 'charging';
+    this._setAiming(false);
 
     const dx = this._hero.x - this._bossBody.x;
     const dy = this._hero.y - this._bossBody.y;
@@ -345,13 +304,13 @@ export class BossScene extends Phaser.Scene {
       callback: () => {
         bossFlashOn = !bossFlashOn;
         if (bossFlashOn) this._bossGfx.setTint(TINT_RED).setTintMode(Phaser.TintModes.FILL);
-        else             this._bossGfx.clearTint();
+        else             this._gradeBoss();
       },
     });
 
     this.time.delayedCall(3000, () => {
       this._bossInvincible = false;
-      this._bossGfx.clearTint();
+      this._gradeBoss();
       if (this._bossFlashTimer) { this._bossFlashTimer.remove(false); this._bossFlashTimer = null; }
     });
   }
@@ -366,26 +325,60 @@ export class BossScene extends Phaser.Scene {
     }
   }
 
+  // Stomp: a 350ms warning ring at the feet, then the shockwave. Both fit
+  // inside the 800ms recovery window.
   _doStomp() {
     const BOSS_H = 192;
-    const feetY  = this._bossBody.y + BOSS_H * 0.5;
-    const wave   = this.add.rectangle(this._bossBody.x, feetY, 0, 14, 0xcc6600, 0.7);
-    wave.setDepth(5);
+    const feetX = this._bossBody.x;
+    const feetY = this._bossBody.y + BOSS_H * 0.5;
+    const ring = this.add.ellipse(feetX, feetY, 240, 60).setStrokeStyle(4, P.FIRE_HOT, 1).setDepth(4).setScale(0.3);
+    this.tweens.add({ targets: ring, scale: 1, alpha: { from: 1, to: 0.4 }, duration: 350, ease: 'Cubic.easeOut' });
+    this.time.delayedCall(350, () => {
+      ring.destroy();
+      if (this._bossState === 'dead') return;
+      shake(this, 160, 0.006);
+      this.fx.puff.explode(14, feetX, feetY);
+      const wave = this.add.rectangle(feetX, feetY, 0, 14, P.FIRE, 0.75);
+      wave.setDepth(5);
 
-    this.tweens.add({
-      targets: wave,
-      width: 960,
-      alpha: { from: 0.7, to: 0 },
-      duration: 400,
-      ease: 'Linear',
-      onUpdate: () => {
-        const heroB = this._hero.getBounds();
-        const waveB = wave.getBounds();
-        if (Phaser.Geom.Intersects.RectangleToRectangle(heroB, waveB)) {
-          this._damageHero();
-        }
-      },
-      onComplete: () => wave.destroy(),
+      this.tweens.add({
+        targets: wave,
+        width: 960,
+        alpha: { from: 0.75, to: 0 },
+        duration: 400,
+        ease: 'Linear',
+        onUpdate: () => {
+          const heroB = this._hero.getBounds();
+          const waveB = wave.getBounds();
+          if (Phaser.Geom.Intersects.RectangleToRectangle(heroB, waveB)) {
+            this._damageHero();
+          }
+        },
+        onComplete: () => wave.destroy(),
+      });
+    });
+  }
+
+  _setAiming(on) {
+    this._aiming = on;
+    this._aimMarks.forEach((m) => m.setVisible(on));
+    if (on) {
+      this._bossGfx.setTint(P.FIRE_HOT).setTintMode(Phaser.TintModes.ADD);
+      this.time.delayedCall(120, () => { if (this._bossState === 'idle' && !this._bossInvincible) this._gradeBoss(); });
+    }
+  }
+
+  _updateAim() {
+    if (!this._aiming) return;
+    const dx = this._hero.x - this._bossBody.x;
+    const dy = this._hero.y - this._bossBody.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+    const pulse = (this.time.now % 300) / 300;
+    this._aimMarks.forEach((m, i) => {
+      const t = (i + 1 + pulse) / (this._aimMarks.length + 1);
+      m.setPosition(this._bossBody.x + dx * t, this._bossBody.y + dy * t)
+        .setAngle(angle).setAlpha(Math.min(1, len / 200) * (0.4 + 0.6 * (1 - t)));
     });
   }
 
@@ -397,9 +390,9 @@ export class BossScene extends Phaser.Scene {
 
     const charKey = this.game.registry.get('character') || 'pip';
     const PROJ_STATS = {
-      pip:   { speed: 420, w: 6,  h: 18, color: 0xffdd00 },
-      john:  { speed: 600, w: 5,  h: 5,  color: 0xffffff },
-      ellen: { speed: 280, w: 8,  h: 28, color: 0x8B5E3C },
+      pip:   { speed: 420, w: 6,  h: 18, color: P.GOLD_LIGHT },
+      john:  { speed: 600, w: 5,  h: 5,  color: P.CREAM },
+      ellen: { speed: 280, w: 8,  h: 28, color: P.STONE_LIGHT },
     };
     const stats = PROJ_STATS[charKey] || PROJ_STATS.pip;
 
@@ -408,7 +401,7 @@ export class BossScene extends Phaser.Scene {
       this._hero.y + this._facing.y * 20,
       stats.w, stats.h, stats.color,
     );
-    proj.setDepth(10);
+    proj.setDepth(10).setStrokeStyle(1, P.INK);
 
     this.physics.add.existing(proj);
     proj.body.setCollideWorldBounds(true);
@@ -438,7 +431,9 @@ export class BossScene extends Phaser.Scene {
     if (this._heroHp <= 0) return;
     this._heroHp = Math.max(0, this._heroHp - 1);
     this._heroInvincible = true;
-    this._updateHeartHUD();
+    this.hud({ type: 'hero-hp', hp: this._heroHp });
+    flash(this, P.BLOOD, 0.18, 200);
+    shake(this, 120, 0.004);
 
     this._hero.setTint(TINT_RED).setTintMode(Phaser.TintModes.FILL);
     let heroFlashOn = true;
@@ -461,31 +456,14 @@ export class BossScene extends Phaser.Scene {
     if (this._heroHp <= 0) this._triggerHeroDeath();
   }
 
-  _updateHeartHUD() {
-    this._heartIcons.forEach((heart, i) => {
-      heart.clear();
-      if (i < this._heroHp) {
-        heart.fillStyle(0xcc0000, 1);
-      } else {
-        heart.fillStyle(0x440000, 1);
-      }
-      heart.fillCircle(0, 0, 10);
-    });
-  }
-
   _registerEyeHit() {
     if (this._bossInvincible || this._bossState === 'dead') return;
 
     this._bossHp = Math.max(0, this._bossHp - 1);
 
-    if (this._eyeIcons[this._bossHp]) {
-      const eye = this._eyeIcons[this._bossHp];
-      eye.clear();
-      eye.fillStyle(0x555500, 1);
-      eye.fillCircle(0, 0, 10);
-      eye.fillStyle(0x222200, 1);
-      eye.fillRect(-2, -8, 4, 16);
-    }
+    this.hud({ type: 'boss-hp', hp: this._bossHp, max: 3 });
+    this.fx.sparkle.explode(10, this._bossBody.x, this._bossBody.y - 40);
+    shake(this, 100, 0.004);
 
     if (this._bossHp <= 0) { this._triggerVictory(); return; }
 
@@ -506,8 +484,7 @@ export class BossScene extends Phaser.Scene {
       rotation: Math.PI * 2, alpha: 0,
       duration: 600, ease: 'Linear',
       onComplete: () => {
-        this.cameras.main.fade(400, 0, 0, 0);
-        this.time.delayedCall(450, () => {
+        iris(this, this._hero.x, this._hero.y, 'close', 420, () => {
           this.game.registry.set('levelSeeds', Array(LEVEL_CONFIGS.length).fill(null));
           this.scene.start('GameScene', { level: 0 });
         });
@@ -525,7 +502,8 @@ export class BossScene extends Phaser.Scene {
     if (this._chargeTimeout)  { this._chargeTimeout.remove(false);  this._chargeTimeout  = null; }
     if (this._clubTimer)      { this._clubTimer.remove(false);      this._clubTimer = null; }
     if (this._bossFlashTimer) { this._bossFlashTimer.remove(false); this._bossFlashTimer = null; }
-    this._bossGfx.clearTint();
+    this._setAiming(false);
+    this._gradeBoss();
     this._bossGfx.play('troll-death', true);
     this._clubActive = false;
 
@@ -534,15 +512,8 @@ export class BossScene extends Phaser.Scene {
       alpha: { from: 1, to: 0.2 },
       duration: 100, yoyo: true, repeat: 5,
       onComplete: () => {
-        this._eyeIcons.forEach(eye => {
-          eye.clear();
-          eye.fillStyle(0x333300, 1);
-          eye.fillCircle(0, 0, 10);
-        });
-
         const xText = this.add.text(
-          this._bossBody.x, this._bossBody.y - 60, '✕',
-          { fontSize: '48px', color: '#cc0000', fontStyle: 'bold' },
+          this._bossBody.x, this._bossBody.y - 60, '✕', TEXT.heading(48, P.BLOOD),
         ).setOrigin(0.5).setDepth(30);
         this._allGraphics.push(xText);
 
@@ -557,11 +528,12 @@ export class BossScene extends Phaser.Scene {
           duration: 1200, ease: 'Cubic.easeIn',
           onComplete: () => {
             xText.destroy();
-            const flash = this.add.rectangle(480, 360, 960, 720, 0xffffff, 1);
-            flash.setDepth(200);
+            if (reducedMotion()) { this._showVictoryScreen(); return; }
+            const whiteout = this.add.rectangle(480, 360, 960, 720, P.CREAM, 1);
+            whiteout.setDepth(200);
             this.tweens.add({
-              targets: flash, alpha: 0, duration: 600,
-              onComplete: () => { flash.destroy(); this._showVictoryScreen(); },
+              targets: whiteout, alpha: 0, duration: 600,
+              onComplete: () => { whiteout.destroy(); this._showVictoryScreen(); },
             });
           },
         });
@@ -570,32 +542,26 @@ export class BossScene extends Phaser.Scene {
   }
 
   _showVictoryScreen() {
-    this.add.text(480, 160, 'THE TEMPLE IS YOURS', {
-      fontSize: '42px', color: '#ffd700', fontStyle: 'bold',
-      stroke: '#4a2800', strokeThickness: 6,
-    }).setOrigin(0.5).setDepth(50);
+    this.add.image(480, 420, HAZARD_KEYS.rays).setScale(4.5).setTint(P.GOLD).setAlpha(0.3)
+      .setBlendMode(Phaser.BlendModes.ADD).setDepth(40);
+    this.add.text(480, 150, 'THE TEMPLE IS YOURS', TEXT.heading(46, P.GOLD_LIGHT)).setOrigin(0.5).setDepth(50);
 
     const charKey = this.game.registry.get('character') || 'pip';
     const cfg     = CHARACTER_CONFIGS[charKey] || CHARACTER_CONFIGS.pip;
     this._victorySprite = this.add.image(480, 480, `${cfg.animKey}-win`);
     this._victorySprite.setScale((TILE_SIZE * 3) / this._victorySprite.height);
-    this._victorySprite.setDepth(10);
+    this._victorySprite.setDepth(45);
+    this.fx.sparkle.setDepth(46);
+    this.time.addEvent({ delay: 200, repeat: 15, callback: () => this.fx.sparkle.explode(6, 480, 400) });
 
     this._victoryActive = true;
 
-    const playAgain = this.add.text(480, 640, 'Play Again', {
-      fontSize: '32px', color: '#fff9e6',
-      stroke: '#4a2800', strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(50).setInteractive({ useHandCursor: true });
-
-    playAgain.on('pointerdown', () => {
+    const restart = () => {
       this.game.registry.set('levelSeeds', Array(LEVEL_CONFIGS.length).fill(null));
       this.scene.start('TitleScene');
-    });
-    this.input.keyboard.once('keydown', () => {
-      this.game.registry.set('levelSeeds', Array(LEVEL_CONFIGS.length).fill(null));
-      this.scene.start('TitleScene');
-    });
+    };
+    createButton(this, 480, 640, 'PLAY AGAIN', { width: 240, onClick: restart }).setFocused(true).setDepth(50);
+    this.input.keyboard.once('keydown', restart);
   }
 
   setupInput() {
@@ -628,7 +594,14 @@ export class BossScene extends Phaser.Scene {
     this._spaceKey.on('down', () => { this.fireProjectile(); });
   }
 
-  update() {
+  update(time, delta) {
+    if (this._heroRig) {
+      this._heroRig.sync();
+      this._torch.x = this._hero.x;
+      this._torch.y = this._hero.y;
+    }
+    this._lavaStrips.forEach((strip) => { strip.tilePositionY -= delta * 0.03; });
+    this._updateAim();
     if (this._bossGfx && this._bossBody) {
       this._bossGfx.x = this._bossBody.x;
       this._bossGfx.y = this._bossBody.y + this._bossH / 2;
@@ -690,6 +663,7 @@ export class BossScene extends Phaser.Scene {
       if (Math.sqrt(dx * dx + dy * dy) < 80) {
         this._clubActive = true;
         this._bossGfx.play('troll-attack', true);
+        this.fx.dust.explode(6, this._bossBody.x + Math.sign(dx) * 40, this._bossBody.y + 80);
         this._clubTimer  = this.time.delayedCall(400, () => {
           this._clubActive = false;
           this._clubTimer  = null;
