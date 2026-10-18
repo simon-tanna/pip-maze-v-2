@@ -25,88 +25,99 @@ export function shuffle(rng, arr) {
   return arr;
 }
 
-// Difficulty config for each of the 9 levels (index 0–8).
-//   trapCount     — every trap including mummies
-//   mummies       — mummy patrols to place (out of trapCount)
+// Difficulty config for each of the 9 levels (index 0–8). Index ≥ 3 adds a
+// second key, so level 4 eases off slightly to absorb the longer route.
+//   trapCount     — flames, blades and spikes (60% on the critical route)
+//   mummies       — mummy patrols, placed in addition to trapCount
+//   rooms         — open 3×3 / 5×3 chambers merged into the maze
 //   targetCrit    — preferred critical-route length in tiles (rejection sampling)
 //   targetDensity — preferred hazards per 10 critical-route tiles
 export const LEVEL_CONFIGS = [
   {
-    loopFactor: 0.36,
-    trapCount: 12,
+    loopFactor: 0.30,
+    trapCount: 10,
     mummies: 0,
+    rooms: 2,
     trapTypes: ["flame", "blade"],
     patrolRange: [3, 4],
     targetCrit: 50,
     targetDensity: 1.3,
   },
   {
-    loopFactor: 0.29,
-    trapCount: 15,
+    loopFactor: 0.26,
+    trapCount: 13,
     mummies: 0,
+    rooms: 2,
     trapTypes: ["flame", "blade"],
     patrolRange: [3, 4],
     targetCrit: 54,
     targetDensity: 1.38,
   },
   {
-    loopFactor: 0.23,
-    trapCount: 18,
+    loopFactor: 0.22,
+    trapCount: 15,
     mummies: 0,
+    rooms: 3,
     trapTypes: ["flame", "blade", "spike"],
     patrolRange: [3, 4],
     targetCrit: 59,
     targetDensity: 1.45,
   },
   {
-    loopFactor: 0.18,
-    trapCount: 18,
+    loopFactor: 0.20,
+    trapCount: 16,
     mummies: 0,
+    rooms: 3,
     trapTypes: ["flame", "blade", "spike"],
     patrolRange: [3, 4],
     targetCrit: 63,
     targetDensity: 1.53,
   },
   {
-    loopFactor: 0.14,
-    trapCount: 21,
-    mummies: 6,
+    loopFactor: 0.17,
+    trapCount: 17,
+    mummies: 1,
+    rooms: 3,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [3, 4],
     targetCrit: 68,
     targetDensity: 1.6,
   },
   {
-    loopFactor: 0.11,
-    trapCount: 24,
-    mummies: 7,
+    loopFactor: 0.15,
+    trapCount: 19,
+    mummies: 2,
+    rooms: 3,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [3, 4],
     targetCrit: 72,
     targetDensity: 1.68,
   },
   {
-    loopFactor: 0.09,
-    trapCount: 27,
-    mummies: 8,
+    loopFactor: 0.13,
+    trapCount: 21,
+    mummies: 3,
+    rooms: 4,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [3, 4],
     targetCrit: 76,
     targetDensity: 1.75,
   },
   {
-    loopFactor: 0.06,
-    trapCount: 30,
-    mummies: 9,
+    loopFactor: 0.11,
+    trapCount: 23,
+    mummies: 4,
+    rooms: 4,
     trapTypes: ["flame", "blade", "spike", "mummy"],
-    patrolRange: [5, 6],
+    patrolRange: [4, 5],
     targetCrit: 81,
     targetDensity: 1.83,
   },
   {
-    loopFactor: 0.05,
-    trapCount: 33,
-    mummies: 9,
+    loopFactor: 0.10,
+    trapCount: 25,
+    mummies: 5,
+    rooms: 4,
     trapTypes: ["flame", "blade", "spike", "mummy"],
     patrolRange: [5, 6],
     targetCrit: 85,
@@ -408,6 +419,23 @@ function _generateOnce(levelIndex, seed, config) {
 
   carveDFS(0, 0);
 
+  // Rooms: open up 2×2 or 3×2 blocks of cells (3×3 / 5×3 tiles) after the
+  // carve, so connectivity is already guaranteed. A one-cell gap keeps rooms
+  // apart and the spawn stays a corridor.
+  const rooms = [];
+  for (let tries = 0; rooms.length < config.rooms && tries < 40; tries++) {
+    const w = rng() < 0.5 ? 2 : 3;
+    const h = 2;
+    const cx = randInt(rng, 0, CELL_COLS - w);
+    const cr = randInt(rng, 0, CELL_ROWS - h);
+    if (cx < 2 && cr < 2) continue;
+    if (rooms.some((o) => cx <= o.cx + o.w && o.cx <= cx + w && cr <= o.cr + o.h && o.cr <= cr + h)) continue;
+    rooms.push({ cx, cr, w, h });
+    for (let r = 1 + 2 * cr; r <= 1 + 2 * (cr + h - 1); r++) {
+      for (let c = 1 + 2 * cx; c <= 1 + 2 * (cx + w - 1); c++) map[r][c] = 0;
+    }
+  }
+
   function selectExit(map, rng) {
     const candidates = [];
     for (let r = 1; r <= 13; r++) {
@@ -526,7 +554,7 @@ function _generateOnce(levelIndex, seed, config) {
     return true;
   });
 
-  const regularCount = config.trapCount - config.mummies;
+  const regularCount = config.trapCount;
   const onPathCount = Math.round(regularCount * 0.6);
   const offPathCount = regularCount - onPathCount;
 
