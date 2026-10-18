@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { CHARACTER_CONFIGS, bakeTileTextures, bakeDecorTextures } from '../lib/graphics.js';
 import { registerCharacterAnimations } from '../lib/animation-registry.js';
+import { bakeEnvironmentTextures } from '../lib/environment.js';
+import { bakeHazardTextures, registerHazardAnimations } from '../lib/hazard-art.js';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -38,13 +40,16 @@ export class BootScene extends Phaser.Scene {
     this._registerTrollFramesAndAnims();
     bakeTileTextures(this);
     bakeDecorTextures(this);
+    bakeEnvironmentTextures(this);
+    bakeHazardTextures(this);
+    registerHazardAnimations(this);
 
     const start = () => this.scene.start('PlayerScene');
 
     const WebFont = window.WebFont;
     if (WebFont && typeof WebFont.load === 'function') {
       WebFont.load({
-        google: { families: ['Black Ops One'] },
+        google: { families: ['Black Ops One', 'Pixelify Sans:400,600'] },
         active: start,
         inactive: start,
       });

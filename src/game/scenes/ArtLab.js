@@ -72,7 +72,7 @@ export class ArtLabScene extends Phaser.Scene {
     }));
     before.render();
     this.add.image(48, 80, 'lab-before').setOrigin(0).setScale(2);
-    drawChamber(this, FRAGMENT, 7, 'lab-after').setPosition(528, 80).setScale(2);
+    drawChamber(this, FRAGMENT, 7, { key: 'lab-after' }).setPosition(528, 80).setScale(2);
     this.add.text(240, 62, 'BEFORE', LABEL).setOrigin(0.5);
     this.add.text(720, 62, 'AFTER — autotiled walls, flagstones, AO', LABEL).setOrigin(0.5);
 

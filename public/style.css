@@ -1,8 +1,21 @@
+/* Torchlit Sandstone — values mirror src/game/lib/palette.js */
+:root {
+    --ink: #0e0a0c;
+    --shadow: #1c1418;
+    --floor: #3a2b24;
+    --stone-dark: #4a3428;
+    --stone: #8f6a4c;
+    --stone-light: #b48e64;
+    --ember-dark: #6e1a0e;
+    --fire: #f0742a;
+    --cream: #f3e4c4;
+}
+
 body {
     margin: 0;
     padding: 0;
-    color: rgba(255, 255, 255, 0.87);
-    background-color: #0f0f0f;
+    color: var(--cream);
+    background-color: var(--ink);
 }
 
 #app {
@@ -12,4 +25,65 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+}
+
+/* On-screen controls: hidden by default, shown on touch devices by lib/dpad.js */
+.pad {
+    position: fixed;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: calc(20px + env(safe-area-inset-left, 0px));
+    display: none;
+    grid-template-columns: repeat(3, 68px);
+    grid-template-rows: repeat(3, 68px);
+    gap: 6px;
+    z-index: 1000;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    opacity: 0.9;
+}
+
+.pad-btn {
+    font: 600 26px "Pixelify Sans", "Courier New", monospace;
+    color: var(--cream);
+    background: var(--floor);
+    border: 3px solid var(--ink);
+    border-radius: 6px;
+    box-shadow: inset 0 3px 0 var(--stone), inset 0 -4px 0 var(--shadow), 0 3px 0 var(--ink);
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pad-btn:active {
+    background: var(--ember-dark);
+    border-color: var(--fire);
+    box-shadow: inset 0 3px 0 var(--fire), inset 0 -2px 0 var(--shadow);
+    transform: translateY(2px);
+}
+
+.pad-btn:focus-visible {
+    outline: 3px solid var(--fire);
+    outline-offset: 2px;
+}
+
+.fire {
+    position: fixed;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    right: calc(20px + env(safe-area-inset-right, 0px));
+    z-index: 1000;
+    display: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.fire-btn {
+    width: 104px;
+    height: 104px;
+    font-size: 20px;
+    letter-spacing: 2px;
+    border-radius: 50%;
 }

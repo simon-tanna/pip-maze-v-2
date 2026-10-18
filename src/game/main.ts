@@ -7,11 +7,12 @@ import { WinScene } from './scenes/Win.js';
 import { TutorialScene } from './scenes/Tutorial.js';
 import { BossScene } from './scenes/Boss.js';
 import { ArtLabScene } from './scenes/ArtLab.js';
+import { HudScene } from './scenes/Hud.js';
 
 const config: Phaser.Types.Core.GameConfig = {
     type: WEBGL,
     parent: 'game-container',
-    backgroundColor: '#2c1810',
+    backgroundColor: '#0e0a0c',
     pixelArt: true,
     dom: { createContainer: true },
     scale: {
@@ -30,6 +31,8 @@ const config: Phaser.Types.Core.GameConfig = {
         BossScene,
         // Dev-only art-direction lab (screenshots / palette iteration).
         ...(import.meta.env.DEV ? [ArtLabScene] : []),
+        // Parallel overlay; listed last so it renders above gameplay scenes.
+        HudScene,
     ],
 };
 

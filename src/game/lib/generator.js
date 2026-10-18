@@ -464,3 +464,15 @@ export function tileRng(seed, col, row) {
     return h / 0x100000000;
   };
 }
+
+// Tiles on the start → key (→ key2) → exit route, as "c,r" strings.
+// Used to keep decor and other clutter off the path the player must read.
+export function criticalPath(map, start, key, key2, exit) {
+  const stops = [start, key, ...(key2 ? [key2] : []), exit];
+  const tiles = new Set();
+  for (let i = 0; i < stops.length - 1; i++) {
+    const leg = bfsPath(map, stops[i].col, stops[i].row, stops[i + 1].col, stops[i + 1].row);
+    if (leg) leg.forEach(([c, r]) => tiles.add(`${c},${r}`));
+  }
+  return tiles;
+}

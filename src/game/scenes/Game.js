@@ -1,31 +1,26 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
-import { LEVEL_CONFIGS, generateLevel, bfsPath, tileRng } from '../lib/generator.js';
+import { LEVEL_CONFIGS, generateLevel, bfsPath, criticalPath } from '../lib/generator.js';
+import { CHARACTER_CONFIGS, drawChest, drawKey } from '../lib/graphics.js';
+import { P, LIGHT } from '../lib/palette.js';
+import { drawChamber, planDecor } from '../lib/environment.js';
 import {
-  CHARACTER_CONFIGS,
-  createPlayer,
-  bakeTileTextures,
-  wallTileKey,
-  floorTileKey,
-  drawChest,
-  drawKey,
-  drawKeyIcon,
-  drawFlameNozzle,
-  createFlame,
-  drawBlade,
-  drawMummy,
-  drawSpike,
-  drawSpikeBase,
-  drawVineTuft,
-  drawGroundPlant,
-  drawBones,
-  drawBrokenPot,
-  drawSandPile,
-  drawScarab,
-  drawGlyphChip,
-  pickDecor,
-} from '../lib/graphics.js';
+  DEPTH,
+  createFlameTrap,
+  createSpikeTrap,
+  createBladeTrap,
+  createMummyVisual,
+  setMummyFacing,
+  setMummyAlert,
+} from '../lib/hazards.js';
+import { createHero } from '../lib/hero.js';
+import { createWorldFx, flash, hitStop, iris, shake } from '../lib/fx.js';
+import { TEXT } from '../lib/ui.js';
+import { hudKeySlotPos } from './Hud.js';
 import { showDpad, wireDpad, unwireDpad } from '../lib/dpad.js';
+
+const T = TILE_SIZE;
+const centre = (n) => n * T + T / 2;
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -40,19 +35,13 @@ export class GameScene extends Phaser.Scene {
     this._bladeTweens = [];
     this._mummyGraphics = [];
     this.spikeRects = [];
-    this._spikeGraphics = [];
-    this._spikeGlows = [];
     this._winTriggered = false;
+    this._dying = false;
     this.keysCollected = 0;
-    this._keyHudSlots = [null, null];
-    this._keyHudIcons = [null, null];
-    this._starEmitter = null;
-    this._key2RevealEmitter = null;
-    this._playerHudText = null;
     this.pipMoving = false;
   }
 
-  create(data) {
+  create() {
     if (this.levelIndex >= LEVEL_CONFIGS.length) {
       this.scene.start("WinScene", { level: this.levelIndex - 1 });
       return;
@@ -68,220 +57,76 @@ export class GameScene extends Phaser.Scene {
       this.game.registry.set("levelSeeds", levelSeeds);
     }
 
-    this.currentLevel = generateLevel(
-      this.levelIndex,
-      levelSeeds[this.levelIndex],
-    );
+    const levelSeed = levelSeeds[this.levelIndex];
+    this.currentLevel = generateLevel(this.levelIndex, levelSeed);
     const levelData = this.currentLevel;
-
     this.map = levelData.map;
+    this.requiredKeys = levelData.key2 ? 2 : 1;
+    this.keyState = [levelData.key, ...(levelData.key2 ? [levelData.key2] : [])].map((k) => ({
+      col: k.col, row: k.row, sprite: null, pulseTween: null, light: null, collected: false,
+    }));
+
     this.startCol = 0;
     this.startRow = 0;
-    this.walls = this.add.group();
-    this.flameRects = [];
-    this.bladeZones = [];
-    this.mummyList = [];
-    this._bladeTweens = [];
-    this._mummyGraphics = [];
-    this.spikeRects = [];
-    this._spikeGraphics = [];
-    this._spikeGlows = [];
-    this._winTriggered = false;
-    this.keysCollected = 0;
-    this.requiredKeys = levelData.key2 ? 2 : 1;
-    this.keyState = [
-      {
-        col: levelData.key.col,
-        row: levelData.key.row,
-        sprite: null,
-        pulseTween: null,
-        collected: false,
-      },
-    ];
-    if (levelData.key2) {
-      this.keyState.push({
-        col: levelData.key2.col,
-        row: levelData.key2.row,
-        sprite: null,
-        pulseTween: null,
-        collected: false,
-      });
+    let exit = null;
+    this.map.forEach((row, r) => row.forEach((tile, c) => {
+      if (tile === 2) { this.startCol = c; this.startRow = r; }
+      if (tile === 3) exit = { col: c, row: r };
+    }));
+    if (this.startCol === 0 && this.startRow === 0 && this.map[0][0] !== 2) {
+      console.warn(`Level ${this.levelIndex}: no start tile (2) found in map — defaulting to [0,0]`);
     }
-    this._keyHudSlots = [null, null];
-    this._keyHudIcons = [null, null];
-    this._starEmitter = null;
-    this._key2RevealEmitter = null;
-    this._playerHudText = null;
 
-    bakeTileTextures(this);
+    this.lights.enable().setAmbientColor(LIGHT.AMBIENT);
+    this.fx = createWorldFx(this);
 
-    const levelSeed = levelSeeds[this.levelIndex];
-    const halfT = TILE_SIZE / 2;
-    const shadowG = this.add.graphics().setDepth(0.5);
-    const tileAt = (c, r) => {
-      if (r < 0 || r >= levelData.map.length) return 0;
-      if (c < 0 || c >= levelData.map[r].length) return 0;
-      return levelData.map[r][c];
-    };
-
-    levelData.map.forEach((row, rowIdx) => {
-      row.forEach((tile, colIdx) => {
-        const x = colIdx * TILE_SIZE + TILE_SIZE / 2;
-        const y = rowIdx * TILE_SIZE + TILE_SIZE / 2;
-        const variant = tileRng(levelSeed, colIdx, rowIdx)();
-
-        if (tile === 1) {
-          const wallImg = this.add.image(x, y, wallTileKey(variant));
-          this.walls.add(wallImg);
-        } else {
-          const floorImg = this.add.image(x, y, floorTileKey(variant));
-
-          const jitterRng = tileRng(levelSeed, colIdx + 1000, rowIdx + 1000);
-          const jr = 0xf0 + Math.floor(jitterRng() * 16);
-          const jg = 0xf0 + Math.floor(jitterRng() * 16);
-          const jb = 0xf0 + Math.floor(jitterRng() * 16);
-          floorImg.setTint((jr << 16) | (jg << 8) | jb);
-
-          const orient = tileRng(levelSeed, colIdx + 2000, rowIdx + 2000)();
-          floorImg.setAngle(Math.floor(orient * 4) * 90);
-          if (orient > 0.5) floorImg.setFlipX(true);
-
-          if (tileAt(colIdx, rowIdx - 1) === 1) {
-            shadowG.fillStyle(0x000000, 0.40);
-            shadowG.fillRect(x - halfT, y - halfT, TILE_SIZE, 4);
-            shadowG.fillStyle(0x000000, 0.20);
-            shadowG.fillRect(x - halfT, y - halfT + 4, TILE_SIZE, 2);
-          }
-          if (tileAt(colIdx - 1, rowIdx) === 1) {
-            shadowG.fillStyle(0x000000, 0.30);
-            shadowG.fillRect(x - halfT, y - halfT, 4, TILE_SIZE);
-            shadowG.fillStyle(0x000000, 0.15);
-            shadowG.fillRect(x - halfT + 4, y - halfT, 2, TILE_SIZE);
-          }
-          if (tileAt(colIdx + 1, rowIdx) === 1) {
-            shadowG.fillStyle(0x000000, 0.30);
-            shadowG.fillRect(x + halfT - 4, y - halfT, 4, TILE_SIZE);
-            shadowG.fillStyle(0x000000, 0.15);
-            shadowG.fillRect(x + halfT - 6, y - halfT, 2, TILE_SIZE);
-          }
-          if (tileAt(colIdx, rowIdx + 1) === 1) {
-            shadowG.fillStyle(0x000000, 0.22);
-            shadowG.fillRect(x - halfT, y + halfT - 3, TILE_SIZE, 3);
-          }
-
-          if (tile === 2) {
-            this.startCol = colIdx;
-            this.startRow = rowIdx;
-          } else if (tile === 3) {
-            const chest = drawChest(this, x, y);
-            this._exitPulseTween = this.tweens.add({
-              targets: chest,
-              alpha: { from: 1, to: 0.75 },
-              duration: 700,
-              yoyo: true,
-              repeat: -1,
-              ease: "Sine.easeInOut",
-            });
-          }
-        }
-      });
+    // Static layer: walls, floor, AO and decor baked into one lit image.
+    const avoid = criticalPath(this.map, { col: this.startCol, row: this.startRow },
+      levelData.key, levelData.key2, exit || levelData.key);
+    (levelData.traps || []).forEach((t) => {
+      if (t.type === 'mummy') {
+        for (let c = t.patrolCols[0]; c <= t.patrolCols[1]; c++) avoid.add(`${c},${t.row}`);
+      } else avoid.add(`${t.col},${t.row}`);
     });
+    this.keyState.forEach((k) => avoid.add(`${k.col},${k.row}`));
+    drawChamber(this, this.map, levelSeed, { decor: planDecor(this.map, levelSeed, avoid) })
+      .setLighting(true).setDepth(0);
 
-    levelData.map.forEach((row, rowIdx) => {
-      row.forEach((tile, colIdx) => {
-        if (tile !== 0) return;
-
-        const x = colIdx * TILE_SIZE + TILE_SIZE / 2;
-        const y = rowIdx * TILE_SIZE + TILE_SIZE / 2;
-
-        const neighbours = [
-          { wallAbove: true, dr: -1, dc: 0, valid: rowIdx - 1 >= 0 },
-          { wallAbove: false, dr: 0, dc: -1, valid: colIdx - 1 >= 0 },
-          { wallAbove: false, dr: 0, dc: 1, valid: colIdx + 1 < row.length },
-        ];
-
-        for (const { wallAbove, dr, dc, valid } of neighbours) {
-          if (!valid) continue;
-          if (levelData.map[rowIdx + dr][colIdx + dc] !== 1) continue;
-
-          const decRng = tileRng(levelSeed, colIdx + 500, rowIdx + 500);
-          if (decRng() < 0.35) {
-            const pick = pickDecor(decRng(), wallAbove);
-            const vineRng = tileRng(levelSeed, colIdx + 3000, rowIdx + 3000);
-            switch (pick) {
-              case 'vine': drawVineTuft(this, x, y, vineRng); break;
-              case 'plant': drawGroundPlant(this, x, y); break;
-              case 'bones': drawBones(this, x, y); break;
-              case 'pot': drawBrokenPot(this, x, y); break;
-              case 'sandPile': drawSandPile(this, x, y); break;
-              case 'scarab': drawScarab(this, x, y); break;
-              case 'glyph': drawGlyphChip(this, x, y); break;
-            }
-          }
-          break;
-        }
-      });
-    });
-
-    if (
-      this.startCol === 0 &&
-      this.startRow === 0 &&
-      levelData.map[0][0] !== 2
-    ) {
-      console.warn(
-        `Level ${this.levelIndex}: no start tile (2) found in map — defaulting to [0,0]`,
-      );
-    }
+    if (exit) this.createChest(exit);
 
     this.pipCol = this.startCol;
     this.pipRow = this.startRow;
     this.pipMoving = false;
     this.pipFacing = "down";
     this.playerKey = this.game.registry.get("character") || "pip";
-    this.playerAnimKey = (
-      CHARACTER_CONFIGS[this.playerKey] || CHARACTER_CONFIGS.pip
-    ).animKey;
+    this.playerAnimKey = (CHARACTER_CONFIGS[this.playerKey] || CHARACTER_CONFIGS.pip).animKey;
 
-    this.pip = createPlayer(
-      this,
-      this.startCol * TILE_SIZE + TILE_SIZE / 2,
-      this.startRow * TILE_SIZE + TILE_SIZE / 2,
-    );
+    this.hero = createHero(this, centre(this.startCol), centre(this.startRow), undefined,
+      { depth: DEPTH.hero, fx: this.fx });
+    this.pip = this.hero.sprite;
     this.pip.play(`${this.playerAnimKey}-idle-down`);
+    this.torch = this.lights.addLight(this.pip.x, this.pip.y, 230, LIGHT.TORCH, 1.5);
 
-    this.cameras.main.setBounds(0, 0, 40 * TILE_SIZE, 15 * TILE_SIZE);
-    this.cameras.main.startFollow(this.pip, true, 1, 1);
+    const cam = this.cameras.main;
+    cam.setBounds(0, 0, 40 * T, 15 * T);
+    cam.startFollow(this.pip, true, 1, 1);
+    cam.filters.external.addVignette(0.5, 0.5, 1.0, 0.25, P.INK);
 
-    this._chamberText = this.add.text(12, 8, `Chamber ${this.levelIndex + 1}`, {
-      fontSize: "22px",
-      color: "#ffd700",
-      stroke: "#4a2800",
-      strokeThickness: 4,
-      fontStyle: "bold",
-    }).setScrollFactor(0);
+    const activePlayer = this.game.registry.get('activePlayer');
+    this.scene.launch('HudScene', {
+      mode: 'chamber',
+      source: 'GameScene',
+      title: `CHAMBER ${this.levelIndex + 1}`,
+      requiredKeys: this.requiredKeys,
+      collected: 0,
+      player: activePlayer ? { name: activePlayer.name, coins: activePlayer.coin_balance } : null,
+    });
 
     this.events.once("shutdown", () => {
-      this.pip.destroy();
       this.time.removeAllEvents();
-      if (this._winParticles) this._winParticles.destroy();
-      if (this._exitPulseTween) this._exitPulseTween.stop();
-      if (this._starEmitter) this._starEmitter.destroy();
-      if (this._key2RevealEmitter) this._key2RevealEmitter.destroy();
-      if (this._playerHudText) this._playerHudText.destroy();
-      this._keyHudIcons.forEach((icon) => {
-        if (icon) icon.destroy();
-      });
-      this._keyHudSlots.forEach((slot) => {
-        if (slot) slot.destroy();
-      });
-      this.keyState.forEach((k) => {
-        if (k.pulseTween) k.pulseTween.stop();
-      });
-      this._bladeTweens.forEach((t) => t.stop());
+      this.tweens.timeScale = 1;
+      this.time.timeScale = 1;
       this.mummyList.forEach((m) => { if (m.timer) m.timer.remove(); });
-      this._mummyGraphics.forEach((g) => this.tweens.killTweensOf(g));
-      this._spikeGraphics.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
-      this._spikeGlows.forEach((g) => { this.tweens.killTweensOf(g); g.destroy(); });
       unwireDpad(this);
     });
 
@@ -291,167 +136,83 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.createTraps();
     this.createKey();
-    this.createPlayerHud();
+    iris(this, this.pip.x, this.pip.y, 'open', 420);
+  }
+
+  createChest({ col, row }) {
+    const x = centre(col);
+    const y = centre(row);
+    this.chest = drawChest(this, x, y).setDepth(DEPTH.pickup);
+    this.chest.enableFilters();
+    const glow = this.chest.filters.internal.addGlow(P.GOLD_LIGHT, 2, 0, 1);
+    this._exitPulseTween = this.tweens.add({
+      targets: glow, outerStrength: 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+    this.chestLight = this.lights.addLight(x, y, 90, LIGHT.GOLD, 0.6);
   }
 
   createTraps() {
     const traps = this.currentLevel.traps || [];
     traps.forEach((trap) => {
-      if (trap.type === "flame") this.createFlame(trap);
-      if (trap.type === "blade") this.createBlade(trap);
+      if (trap.type === "flame") this.flameRects.push(createFlameTrap(this, trap, { fx: this.fx, lit: true }));
+      if (trap.type === "blade") {
+        const { zone, tween } = createBladeTrap(this, trap, { onEnter: () => this.checkBladeHazards() });
+        this.bladeZones.push(zone);
+        this._bladeTweens.push(tween);
+      }
       if (trap.type === "mummy") this.createMummy(trap);
-      if (trap.type === "spike") this.createSpike(trap);
+      if (trap.type === "spike") {
+        this.spikeRects.push(createSpikeTrap(this, trap, { fx: this.fx, onActive: () => this.checkSpikeHazards() }));
+      }
     });
+  }
+
+  // Key visuals: glow filter, gentle bob and a small gold light.
+  placeKey(k, { fadeIn = false } = {}) {
+    const x = centre(k.col);
+    const y = centre(k.row);
+    k.sprite = drawKey(this, x, y).setDepth(DEPTH.pickup);
+    k.sprite.enableFilters();
+    k.sprite.filters.internal.addGlow(P.GOLD_LIGHT, 3, 0, 1);
+    k.light = this.lights.addLight(x, y, 70, LIGHT.GOLD, 0.7);
+    const bob = () => {
+      k.pulseTween = this.tweens.add({
+        targets: k.sprite, y: y - 3, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+    };
+    if (fadeIn) {
+      k.sprite.setAlpha(0).setScale(k.sprite.scaleX * 0.4);
+      this.fx.sparkle.explode(10, x, y);
+      this.tweens.add({
+        targets: k.sprite, alpha: 1, scaleX: k.sprite.scaleX / 0.4, scaleY: k.sprite.scaleY / 0.4,
+        duration: 500, ease: 'Back.easeOut', onComplete: bob,
+      });
+    } else bob();
+  }
+
+  clearKey(k) {
+    if (k.pulseTween) { k.pulseTween.stop(); k.pulseTween = null; }
+    if (k.sprite) { this.tweens.killTweensOf(k.sprite); k.sprite.destroy(); k.sprite = null; }
+    if (k.light) { this.lights.removeLight(k.light); k.light = null; }
   }
 
   createKey() {
-    const k = this.keyState[0];
-    const x = k.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = k.row * TILE_SIZE + TILE_SIZE / 2;
-    k.sprite = drawKey(this, x, y);
-    k.pulseTween = this.tweens.add({
-      targets: k.sprite,
-      alpha: { from: 1, to: 0.65 },
-      duration: 600,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
-
-    if (this.requiredKeys === 2) {
-      const { width } = this.scale;
-      this._keyHudSlots[0] = drawKeyIcon(this, width - 72, 24);
-      this._keyHudSlots[0].setAlpha(0.25).setDepth(50).setScrollFactor(0);
-      this._keyHudSlots[1] = drawKeyIcon(this, width - 32, 24);
-      this._keyHudSlots[1].setAlpha(0.25).setDepth(50).setScrollFactor(0);
-    }
-  }
-
-  createPlayerHud() {
-    const activePlayer = this.game.registry.get('activePlayer');
-    if (!activePlayer) return;
-    this._playerHudText = this.add.text(
-      this.scale.width - 110, 8,
-      `${activePlayer.name}\n◉ ${activePlayer.coin_balance}`,
-      {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: '#ffd700',
-        stroke: '#4a2800',
-        strokeThickness: 3,
-        align: 'right',
-      },
-    ).setOrigin(1, 0).setScrollFactor(0).setDepth(50);
-  }
-
-  refreshPlayerHud() {
-    if (!this._playerHudText) return;
-    const p = this.game.registry.get('activePlayer');
-    if (p) this._playerHudText.setText(`${p.name}\n◉ ${p.coin_balance}`);
+    this.placeKey(this.keyState[0]);
   }
 
   respawnKey(index) {
     const k = this.keyState[index];
-    const x = k.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = k.row * TILE_SIZE + TILE_SIZE / 2;
-    k.sprite = drawKey(this, x, y);
-    k.pulseTween = this.tweens.add({
-      targets: k.sprite,
-      alpha: { from: 1, to: 0.65 },
-      duration: 600,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
+    this.placeKey(k, { fadeIn: true });
     k.collected = false;
   }
 
-  createFlame(trap) {
-    const x = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = trap.row * TILE_SIZE + TILE_SIZE / 2;
-
-    drawFlameNozzle(this, x, y);
-
-    const glow = this.add.circle(x, y - 4, TILE_SIZE * 0.36, 0xff6600, 0.2);
-
-    const flame = createFlame(this, x, y);
-
-    const flameRef = { active: false };
-    this.flameRects.push({ rect: flameRef, col: trap.col, row: trap.row });
-
-    let flickerTween = null;
-
-    const cycle = () => {
-      this.tweens.add({
-        targets: glow,
-        alpha: 0.65,
-        duration: 500,
-        onComplete: () => {
-          flameRef.active = true;
-          flame.alpha = 1;
-          flickerTween = this.tweens.add({
-            targets: flame,
-            alpha: { from: 0.85, to: 1 },
-            duration: 90,
-            yoyo: true,
-            repeat: -1,
-          });
-          this.time.delayedCall(2000, () => {
-            if (flickerTween) {
-              flickerTween.stop();
-              flickerTween = null;
-            }
-            flameRef.active = false;
-            flame.alpha = 0;
-            glow.alpha = 0.2;
-            this.time.delayedCall(2000, cycle);
-          });
-        },
-      });
-    };
-    cycle();
-  }
-
-  createBlade(trap) {
-    const pivotX = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const pivotY = trap.row * TILE_SIZE + 2;
-
-    const axe = drawBlade(this, pivotX, pivotY);
-
-    let bladeIn = false;
-    this.bladeZones.push({
-      col: trap.col,
-      row: trap.row,
-      active: () => bladeIn,
-    });
-
-    const bladeTween = this.tweens.add({
-      targets: axe,
-      angle: 40,
-      duration: 1100,
-      ease: "Sine.easeInOut",
-      yoyo: true,
-      repeat: -1,
-      onUpdate: () => {
-        const next = Math.abs(axe.angle) < 22;
-        if (next && !bladeIn) {
-          bladeIn = true;
-          this.checkBladeHazards();
-        } else if (!next && bladeIn) {
-          bladeIn = false;
-        }
-      },
-    });
-
-    this._bladeTweens.push(bladeTween);
-  }
-
   createMummy(trap) {
-    const startX = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const startY = trap.row * TILE_SIZE + TILE_SIZE / 2;
+    const startX = centre(trap.col);
+    const startY = centre(trap.row);
 
-    const g = drawMummy(this, startX, startY);
+    const g = createMummyVisual(this, startX, startY);
     this._mummyGraphics.push(g);
+    const alertStyle = TEXT.heading(20, P.CURSE);
 
     const originalSpan = trap.patrolCols[1] - trap.patrolCols[0];
 
@@ -474,6 +235,7 @@ export class GameScene extends Phaser.Scene {
     const switchMode = (newMode) => {
       mummyObj.timer.remove();
       mummyObj.mode = newMode;
+      setMummyAlert(this, g, newMode === 'chase', { textStyle: alertStyle });
       mummyObj.timer = this.time.addEvent({
         delay: newMode === 'chase' ? 450 : 600,
         callback: tick,
@@ -485,13 +247,12 @@ export class GameScene extends Phaser.Scene {
       mummyObj.col += dCol;
       mummyObj.row += dRow;
       mummyObj.moving = true;
+      setMummyFacing(g, dCol);
       const duration = mummyObj.mode === 'chase' ? 300 : 400;
-      const targetX = mummyObj.col * TILE_SIZE + TILE_SIZE / 2;
-      const targetY = mummyObj.row * TILE_SIZE + TILE_SIZE / 2;
       this.tweens.add({
         targets: g,
-        x: targetX,
-        y: targetY,
+        x: centre(mummyObj.col),
+        y: centre(mummyObj.row),
         duration,
         ease: 'Linear',
         onComplete: () => {
@@ -632,87 +393,15 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: g,
       alpha: 0,
+      scaleY: 0.4,
       duration: 300,
       onComplete: () => g.destroy(),
     });
-    const px = mummy.col * TILE_SIZE + TILE_SIZE / 2;
-    const py = mummy.row * TILE_SIZE + TILE_SIZE / 2;
-    const puff = this.add.particles(px, py, '__DEFAULT', {
-      speed: { min: 40, max: 90 },
-      angle: { min: 0, max: 360 },
-      lifespan: 400,
-      scale: { start: 0.5, end: 0 },
-      tint: [0xc8a878, 0x8a7050, 0x6a4828],
-      alpha: { start: 0.8, end: 0 },
-      quantity: 10,
-      emitting: false,
-    });
-    puff.explode(10);
-    this.time.delayedCall(500, () => { if (puff.scene) puff.destroy(); });
+    this.fx.puff.explode(12, centre(mummy.col), centre(mummy.row));
     const idx = this.mummyList.indexOf(mummy);
     if (idx !== -1) this.mummyList.splice(idx, 1);
     const gIdx = this._mummyGraphics.indexOf(g);
     if (gIdx !== -1) this._mummyGraphics.splice(gIdx, 1);
-  }
-
-  createSpike(trap) {
-    const x = trap.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = trap.row * TILE_SIZE + TILE_SIZE / 2;
-
-    const base = drawSpikeBase(this, x, y);
-    this._spikeGraphics.push(base);
-
-    const glow = this.add.circle(x, y, TILE_SIZE * 0.36, 0xcc2200, 0.15);
-    this._spikeGlows.push(glow);
-
-    const spike = drawSpike(this, x, y + 10);
-    spike.alpha = 0;
-    this._spikeGraphics.push(spike);
-
-    const rect = { active: false };
-    this.spikeRects.push({ rect, col: trap.col, row: trap.row });
-
-    const cycle = () => {
-      this.tweens.add({
-        targets: glow,
-        alpha: 0.5,
-        duration: 500,
-        onComplete: () => {
-          spike.alpha = 1;
-          this.tweens.add({
-            targets: spike,
-            y: y,
-            duration: 150,
-            ease: "Linear",
-            onComplete: () => {
-              rect.active = true;
-              this.checkSpikeHazards();
-              this.time.delayedCall(2000, () => {
-                rect.active = false;
-                this.tweens.add({
-                  targets: spike,
-                  y: y + 10,
-                  duration: 150,
-                  ease: "Linear",
-                  onComplete: () => {
-                    spike.alpha = 0;
-                    spike.y = y + 10;
-                    this.tweens.add({
-                      targets: glow,
-                      alpha: 0.15,
-                      duration: 200,
-                    });
-                    this.time.delayedCall(2000, cycle);
-                  },
-                });
-              });
-            },
-          });
-        },
-      });
-    };
-
-    this.time.delayedCall(Math.floor(Math.random() * 3000), cycle);
   }
 
   validatePaths() {
@@ -779,7 +468,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   tryMove(dCol, dRow) {
-    if (this.pipMoving || this._winTriggered) return;
+    if (this.pipMoving || this._winTriggered || this._dying) return;
     const newCol = this.pipCol + dCol;
     const newRow = this.pipRow + dRow;
 
@@ -794,22 +483,21 @@ export class GameScene extends Phaser.Scene {
     else this.pipFacing = "down";
 
     this.pip.play(`${this.playerAnimKey}-walk-${this.pipFacing}`);
+    this.hero.step();
 
     this.pipCol = newCol;
     this.pipRow = newRow;
     this.pipMoving = true;
 
-    const targetX = newCol * TILE_SIZE + TILE_SIZE / 2;
-    const targetY = newRow * TILE_SIZE + TILE_SIZE / 2;
-
     this.tweens.add({
       targets: this.pip,
-      x: targetX,
-      y: targetY,
+      x: centre(newCol),
+      y: centre(newRow),
       duration: 120,
       ease: "Linear",
       onComplete: () => {
         this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
+        this.hero.land();
         this.pipMoving = false;
         this.checkHazards();
         this.checkBladeHazards();
@@ -819,91 +507,49 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  hud(msg) {
+    this.events.emit('hud', msg);
+  }
+
   collectKey(index) {
     const k = this.keyState[index];
     k.collected = true;
     this.keysCollected++;
 
-    if (k.pulseTween) {
-      k.pulseTween.stop();
-      k.pulseTween = null;
-    }
-    if (k.sprite) {
-      k.sprite.destroy();
-      k.sprite = null;
-    }
+    // Juice: hit-stop, sparkle burst, then the key flies to its HUD slot.
+    const cam = this.cameras.main;
+    const sx = k.sprite.x - cam.scrollX;
+    const sy = k.sprite.y - cam.scrollY;
+    this.fx.sparkle.explode(16, k.sprite.x, k.sprite.y);
+    this.clearKey(k);
+    hitStop(this, 60);
+    flash(this, P.CREAM, 0.2, 200);
 
-    this.showFlash(0xffffff, 0.35, 250);
-
-    const hudX =
-      index === 0
-        ? this.requiredKeys === 2
-          ? this.scale.width - 72
-          : this.scale.width - 32
-        : this.scale.width - 32;
-    if (this._keyHudSlots[index]) {
-      this._keyHudSlots[index].destroy();
-      this._keyHudSlots[index] = null;
-    }
-    const icon = drawKeyIcon(this, hudX, 24);
-    icon.setDepth(50).setScrollFactor(0);
-    this._keyHudIcons[index] = icon;
-
-    this._fireStarEmitter();
+    const slot = hudKeySlotPos(index, this.requiredKeys);
+    const flyer = this.add.image(sx, sy, 'key').setDisplaySize(46, 43)
+      .setScrollFactor(0).setDepth(900);
+    const collected = this.keysCollected;
+    this.tweens.add({
+      targets: flyer,
+      x: slot.x,
+      y: slot.y,
+      displayWidth: 26,
+      displayHeight: 24,
+      duration: 450,
+      ease: 'Cubic.easeInOut',
+      onComplete: () => {
+        flyer.destroy();
+        this.hud({ type: 'keys', collected: Math.min(collected, this.keysCollected), required: this.requiredKeys });
+      },
+    });
 
     if (index === 0 && this.requiredKeys === 2) {
       this._revealKey2();
     }
   }
 
-  showFlash(color, alpha, duration) {
-    const { width, height } = this.scale;
-    const flash = this.add.rectangle(
-      width / 2,
-      height / 2,
-      width,
-      height,
-      color,
-      alpha,
-    );
-    flash.setDepth(100).setScrollFactor(0);
-    this.tweens.add({
-      targets: flash,
-      alpha: 0,
-      duration,
-      onComplete: () => flash.destroy(),
-    });
-  }
-
   showToast(message) {
-    const { width, height } = this.scale;
-    const toast = this.add
-      .text(width / 2, height / 2 - 60, message, {
-        fontSize: "24px",
-        color: "#ffd700",
-        stroke: "#4a2800",
-        strokeThickness: 4,
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(200)
-      .setScrollFactor(0);
-
-    this.tweens.add({
-      targets: toast,
-      alpha: { from: 0, to: 1 },
-      duration: 200,
-      onComplete: () => {
-        this.time.delayedCall(900, () => {
-          this.tweens.add({
-            targets: toast,
-            alpha: 0,
-            duration: 300,
-            onComplete: () => toast.destroy(),
-          });
-        });
-      },
-    });
+    this.hud({ type: 'toast', text: message });
   }
 
   checkWin() {
@@ -937,117 +583,73 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       this._winTriggered = true;
-      const exitX = this.pipCol * TILE_SIZE + TILE_SIZE / 2;
-      const exitY = this.pipRow * TILE_SIZE + TILE_SIZE / 2;
-      const particles = this.add.particles(exitX, exitY, "__DEFAULT", {
-        speed: { min: 80, max: 250 },
-        angle: { min: 0, max: 360 },
-        scale: { start: 0.6, end: 0 },
-        tint: [0xffd700, 0xff8800, 0xffffff],
-        lifespan: 900,
-        quantity: 25,
-        emitting: false,
-      });
-      particles.explode(25);
-      this._winParticles = particles;
-      this.time.delayedCall(600, () => {
-        this.scene.start("WinScene", { level: this.levelIndex });
-      });
+      this.openChest();
     }
   }
 
-  _fireStarEmitter() {
-    // Particle effect stubbed out — to be implemented later.
+  // Chest sequence: squash-pop, gold burst + light flare, then iris out.
+  openChest() {
+    const x = centre(this.pipCol);
+    const y = centre(this.pipRow);
+    if (this._exitPulseTween) this._exitPulseTween.stop();
+    if (this.chest) {
+      const sx = this.chest.scaleX;
+      const sy = this.chest.scaleY;
+      this.tweens.chain({
+        targets: this.chest,
+        tweens: [
+          { scaleX: sx * 1.2, scaleY: sy * 0.8, duration: 80, ease: 'Quad.easeOut' },
+          { scaleX: sx * 0.9, scaleY: sy * 1.2, duration: 140, ease: 'Back.easeOut' },
+          { scaleX: sx, scaleY: sy, duration: 120 },
+        ],
+      });
+    }
+    this.fx.sparkle.explode(28, x, y - 8);
+    if (this.chestLight) this.tweens.add({ targets: this.chestLight, intensity: 3, radius: 200, duration: 300 });
+    shake(this, 160, 0.004);
+    this.time.delayedCall(350, () => {
+      iris(this, x, y, 'close', 420, () => this.scene.start("WinScene", { level: this.levelIndex }));
+    });
   }
 
   _revealKey2() {
-    const k = this.keyState[1];
-    const x = k.col * TILE_SIZE + TILE_SIZE / 2;
-    const y = k.row * TILE_SIZE + TILE_SIZE / 2;
-
-    k.sprite = drawKey(this, x, y);
-    k.sprite.setAlpha(0);
-
-    this.tweens.add({
-      targets: k.sprite,
-      alpha: { from: 0, to: 1 },
-      duration: 500,
-      ease: "Sine.easeOut",
-      onComplete: () => {
-        k.pulseTween = this.tweens.add({
-          targets: k.sprite,
-          alpha: { from: 1, to: 0.65 },
-          duration: 600,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.easeInOut",
-        });
-      },
-    });
+    this.placeKey(this.keyState[1], { fadeIn: true });
   }
 
   resetPip() {
     this.tweens.killTweensOf(this.pip);
-    this.showFlash(0xff0000, 0.25, 300);
+    flash(this, P.BLOOD, 0.22, 300);
+    shake(this, 120, 0.003);
     this.pipMoving = false;
     this.pipCol = this.startCol;
     this.pipRow = this.startRow;
-    this.pip.setPosition(
-      this.startCol * TILE_SIZE + TILE_SIZE / 2,
-      this.startRow * TILE_SIZE + TILE_SIZE / 2,
-    );
+    this._dying = true;
+    const facing = this.pipFacing;
     this.pipFacing = "down";
-    this.pip.play(`${this.playerAnimKey}-idle-down`);
-    this.tweens.add({
-      targets: this.pip,
-      alpha: { from: 0.3, to: 1 },
-      duration: 400,
-      ease: "Linear",
+
+    // Visuals catch up with the already-reset state: knockback, poof, pop in.
+    this.hero.die(facing, () => {
+      this.pip.play(`${this.playerAnimKey}-idle-down`);
+      this.hero.respawn(centre(this.startCol), centre(this.startRow));
+      this.time.delayedCall(260, () => { this._dying = false; });
     });
 
     if (this.keysCollected === 0) return;
 
     const lostIndex = this.keysCollected - 1;
 
-    if (this._keyHudIcons[lostIndex]) {
-      this._keyHudIcons[lostIndex].destroy();
-      this._keyHudIcons[lostIndex] = null;
-    }
-    if (this.requiredKeys === 2 && !this._keyHudSlots[lostIndex]) {
-      const hudX =
-        lostIndex === 0 ? this.scale.width - 72 : this.scale.width - 32;
-      this._keyHudSlots[lostIndex] = drawKeyIcon(this, hudX, 24);
-      this._keyHudSlots[lostIndex].setAlpha(0.25).setDepth(50).setScrollFactor(0);
-    }
-
     if (lostIndex === 0 && this.keyState.length > 1) {
       const k2 = this.keyState[1];
-      if (k2.sprite && !k2.collected) {
-        this.tweens.killTweensOf(k2.sprite);
-        if (k2.pulseTween) {
-          k2.pulseTween.stop();
-          k2.pulseTween = null;
-        }
-        k2.sprite.destroy();
-        k2.sprite = null;
-        if (this._key2RevealEmitter) {
-          this._key2RevealEmitter.stop();
-          this._key2RevealEmitter.destroy();
-          this._key2RevealEmitter = null;
-        }
-        if (!this._keyHudSlots[1]) {
-          this._keyHudSlots[1] = drawKeyIcon(this, this.scale.width - 32, 24);
-          this._keyHudSlots[1].setAlpha(0.25).setDepth(50).setScrollFactor(0);
-        }
-      }
+      if (k2.sprite && !k2.collected) this.clearKey(k2);
     }
 
     this.respawnKey(lostIndex);
     this.keysCollected--;
+    this.hud({ type: 'keys', collected: this.keysCollected, required: this.requiredKeys });
   }
 
   checkHazards() {
-    if (this._winTriggered) return;
+    if (this._winTriggered || this._dying) return;
     for (const { rect, col, row } of this.flameRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.resetPip();
@@ -1063,7 +665,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   checkBladeHazards() {
-    if (this._winTriggered) return;
+    if (this._winTriggered || this._dying) return;
     for (const { col, row, active } of this.bladeZones) {
       if (active() && this.pipCol === col && this.pipRow === row) {
         this.resetPip();
@@ -1073,7 +675,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   checkSpikeHazards() {
-    if (this._winTriggered) return;
+    if (this._winTriggered || this._dying) return;
     for (const { rect, col, row } of this.spikeRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.resetPip();
@@ -1083,6 +685,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
+    if (!this.hero) return;
+    this.hero.sync();
+    this.torch.x = this.pip.x;
+    this.torch.y = this.pip.y;
+
     if (
       Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
       Phaser.Input.Keyboard.JustDown(this.wasd.up)

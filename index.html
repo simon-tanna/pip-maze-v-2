@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/style.css">
     <link
-      href="https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Pixelify+Sans:wght@400;600&display=swap"
       rel="stylesheet"
     />
     <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
     <title>Pip's Temple Adventure</title>
     <style>
       body {
-        background: #1a0e07;
+        background: #0e0a0c;
       }
       #app {
         display: flex;
@@ -36,65 +36,23 @@
         visibility: hidden;
       "
     >
-      Font Loader
+      Font Loader <span style="font-family: 'Pixelify Sans'">Font Loader</span>
     </div>
 
-    <div
-      id="dpad"
-      style="
-        position: fixed;
-        bottom: 20px;
-        left: 20px;
-        display: grid;
-        grid-template-columns: 72px 72px 72px;
-        grid-template-rows: 72px 72px 72px;
-        gap: 4px;
-        z-index: 1000;
-        touch-action: none;
-        user-select: none;
-        -webkit-user-select: none;
-      "
-    >
+    <div id="dpad" class="pad" aria-label="Movement controls">
       <div></div>
-      <button id="btn-up" style="grid-column: 2; grid-row: 1; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">▲</button>
+      <button id="btn-up" class="pad-btn" style="grid-column: 2; grid-row: 1" aria-label="Up">▲</button>
       <div></div>
-      <button id="btn-left" style="grid-column: 1; grid-row: 2; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">◄</button>
+      <button id="btn-left" class="pad-btn" style="grid-column: 1; grid-row: 2" aria-label="Left">◄</button>
       <div></div>
-      <button id="btn-right" style="grid-column: 3; grid-row: 2; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">►</button>
+      <button id="btn-right" class="pad-btn" style="grid-column: 3; grid-row: 2" aria-label="Right">►</button>
       <div></div>
-      <button id="btn-down" style="grid-column: 2; grid-row: 3; font-size: 28px; background: #c8a876; border: 3px solid #4a2800; border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;">▼</button>
+      <button id="btn-down" class="pad-btn" style="grid-column: 2; grid-row: 3" aria-label="Down">▼</button>
       <div></div>
     </div>
 
-    <div
-      id="fire-container"
-      style="
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1000;
-        display: none;
-        touch-action: none;
-        user-select: none;
-        -webkit-user-select: none;
-      "
-    >
-      <button
-        id="btn-fire"
-        style="
-          width: 100px;
-          height: 100px;
-          font-size: 18px;
-          font-weight: bold;
-          background: #c8a876;
-          border: 3px solid #4a2800;
-          border-radius: 50%;
-          cursor: pointer;
-          touch-action: none;
-          user-select: none;
-          -webkit-user-select: none;
-        "
-      >FIRE</button>
+    <div id="fire-container" class="fire">
+      <button id="btn-fire" class="pad-btn fire-btn" aria-label="Fire">FIRE</button>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

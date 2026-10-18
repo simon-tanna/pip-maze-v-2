@@ -6,6 +6,7 @@
 import { TILE_SIZE } from './constants.js';
 import { P } from './palette.js';
 import { mulberry32, tileRng } from './generator.js';
+import { HAZARD_KEYS, DECOR_KINDS, bakeHazardTextures } from './hazard-art.js';
 
 const T = TILE_SIZE;
 
@@ -161,10 +162,32 @@ export function bakeEnvironmentTextures(scene) {
   ['n', 'e', 's', 'w'].forEach((side) => bake(aoKey(side), (g) => paintAO(g, side)));
 }
 
+export const DECOR_CHANCE = 0.12;
+
+// Picks decor deterministically: only plain floor next to a wall, never on a
+// tile in `avoid` (hazards, pickups, the critical path). Moss only hangs off
+// a wall to the north.
+export function planDecor(map, seed, avoid = new Set(), chance = DECOR_CHANCE) {
+  const out = [];
+  for (let r = 0; r < map.length; r++) {
+    for (let c = 0; c < map[r].length; c++) {
+      if (map[r][c] !== 0 || avoid.has(`${c},${r}`)) continue;
+      const wallN = !isOpen(map, c, r - 1);
+      if (!wallN && isOpen(map, c - 1, r) && isOpen(map, c + 1, r)) continue;
+      const rng = tileRng(seed, c + 500, r + 500);
+      if (rng() >= chance) continue;
+      const kinds = wallN ? DECOR_KINDS : DECOR_KINDS.filter((k) => k !== 'moss');
+      out.push({ col: c, row: r, kind: kinds[Math.floor(rng() * kinds.length)] });
+    }
+  }
+  return out;
+}
+
 // Bakes the whole static layer of a chamber into one texture and returns an
 // Image showing it. Same seed + map → identical pixels.
-export function drawChamber(scene, map, seed, key = 'env-chamber') {
+export function drawChamber(scene, map, seed, { key = 'env-chamber', decor = [] } = {}) {
   bakeEnvironmentTextures(scene);
+  bakeHazardTextures(scene);
   const rows = map.length;
   const cols = map[0].length;
   if (scene.textures.exists(key)) scene.textures.remove(key);
@@ -188,6 +211,7 @@ export function drawChamber(scene, map, seed, key = 'env-chamber') {
       if (!isOpen(map, c, r + 1)) dt.stamp(aoKey('s'), null, x, y, at);
     }
   }
+  decor.forEach(({ col, row, kind }) => dt.stamp(HAZARD_KEYS.decor(kind), null, col * T, row * T, at));
   dt.render();
   return scene.add.image(0, 0, key).setOrigin(0, 0);
 }

@@ -1,5 +1,11 @@
 const BTN_IDS = ['btn-up', 'btn-down', 'btn-left', 'btn-right'];
 
+// On-screen controls only make sense on touch screens; desktop players use
+// the keyboard and the pad would cover the play field.
+export function isTouchDevice() {
+  return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+}
+
 export function hideDpad() {
   const el = document.getElementById('dpad');
   if (el) el.style.display = 'none';
@@ -7,7 +13,12 @@ export function hideDpad() {
 
 export function showDpad() {
   const el = document.getElementById('dpad');
-  if (el) el.style.display = 'grid';
+  if (el) el.style.display = isTouchDevice() ? 'grid' : 'none';
+}
+
+export function showFireButton(visible) {
+  const el = document.getElementById('fire-container');
+  if (el) el.style.display = visible && isTouchDevice() ? 'block' : 'none';
 }
 
 // Wires the four d-pad buttons to onDir(dCol, dRow) and stores the

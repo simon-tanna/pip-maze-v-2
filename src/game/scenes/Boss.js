@@ -12,6 +12,7 @@ import {
   bakeBossFloorTextures,
   drawBossFloorTile,
 } from '../lib/graphics.js';
+import { showFireButton } from '../lib/dpad.js';
 
 const TINT_RED = 0xff0000;
 
@@ -205,8 +206,7 @@ export class BossScene extends Phaser.Scene {
       });
       this._domHandlers = [];
 
-      const fireContainer = document.getElementById('fire-container');
-      if (fireContainer) fireContainer.style.display = 'none';
+      showFireButton(false);
     });
 
     this._playBossEntrance(BOSS_LAND_Y);
@@ -617,9 +617,8 @@ export class BossScene extends Phaser.Scene {
       this._domHandlers.push({ el: btn, type: 'pointerleave', fn: leave });
     });
 
-    const fireContainer = document.getElementById('fire-container');
-    const fireBtn       = document.getElementById('btn-fire');
-    if (fireContainer) fireContainer.style.display = 'block';
+    const fireBtn = document.getElementById('btn-fire');
+    showFireButton(true);
     if (fireBtn) {
       const fireDown = (e) => { e.preventDefault(); this.fireProjectile(); };
       fireBtn.addEventListener('pointerdown', fireDown);
