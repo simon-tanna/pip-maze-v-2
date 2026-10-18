@@ -30,6 +30,12 @@ export const HAZARD_TIMING = {
   bladeDangerAngle: 22,
 };
 
+// Full cycle lengths, used to spread hazards' start phases across a cycle.
+export const HAZARD_CYCLE = {
+  flame: HAZARD_TIMING.telegraph + HAZARD_TIMING.flameOn + HAZARD_TIMING.flameOff,
+  spike: HAZARD_TIMING.telegraph + 2 * HAZARD_TIMING.spikeRise + HAZARD_TIMING.spikeUp + HAZARD_TIMING.spikeOff,
+};
+
 export const DEPTH = {
   base: 2,
   pickup: 3,
@@ -38,7 +44,8 @@ export const DEPTH = {
   fx: 6,
 };
 
-export function createFlameTrap(scene, trap, { fx, lit = false, onIgnite = () => {} }) {
+// `phase` delays the first cycle (ms) so neighbouring flames don't fire in unison.
+export function createFlameTrap(scene, trap, { fx, lit = false, onIgnite = () => {}, phase = 0 }) {
   const x = centre(trap.col);
   const y = centre(trap.row);
   const nozzle = scene.add.image(x, y, HAZARD_KEYS.nozzle(NOZZLE_STATE.IDLE)).setDepth(DEPTH.base);
@@ -96,11 +103,12 @@ export function createFlameTrap(scene, trap, { fx, lit = false, onIgnite = () =>
     scene.time.delayedCall(HAZARD_TIMING.telegraph, ignite);
   };
 
-  cycle();
+  if (phase > 0) scene.time.delayedCall(phase, cycle);
+  else cycle();
   return { rect, col: trap.col, row: trap.row };
 }
 
-export function createSpikeTrap(scene, trap, { fx, onActive = () => {} }) {
+export function createSpikeTrap(scene, trap, { fx, onActive = () => {}, phase = 0 }) {
   const x = centre(trap.col);
   const y = centre(trap.row);
   const plate = scene.add.image(x, y, HAZARD_KEYS.spike(SPIKE_STATE.IDLE)).setDepth(DEPTH.base);
@@ -141,7 +149,7 @@ export function createSpikeTrap(scene, trap, { fx, onActive = () => {} }) {
     scene.time.delayedCall(HAZARD_TIMING.telegraph, rise);
   };
 
-  scene.time.delayedCall(Math.floor(Math.random() * 3000), cycle);
+  scene.time.delayedCall(phase, cycle);
   return { rect, col: trap.col, row: trap.row };
 }
 

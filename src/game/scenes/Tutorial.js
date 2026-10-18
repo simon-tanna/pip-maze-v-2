@@ -258,7 +258,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   checkHazards() {
-    if (this._dying) return;
+    if (this._dying || this.hero.invulnerable) return;
     for (const { rect, col, row } of this.flameRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.showHint('The flame is active. Wait for it to cool down.');
@@ -277,7 +277,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   checkBladeHazards() {
-    if (this._dying) return;
+    if (this._dying || this.hero.invulnerable) return;
     for (const { col, row, active } of this.bladeZones) {
       if (active() && this.pipCol === col && this.pipRow === row) {
         this.showHint('The blade was still swinging. Wait longer!');
@@ -288,7 +288,7 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   checkSpikeHazards() {
-    if (this._dying) return;
+    if (this._dying || this.hero.invulnerable) return;
     for (const { rect, col, row } of this.spikeRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.showHint('The spikes are still up. Wait for them to retract.');
@@ -311,6 +311,7 @@ export class TutorialScene extends Phaser.Scene {
     this.hero.die(facing, () => {
       this.pip.play(`${this.playerAnimKey}-idle-down`);
       this.hero.respawn(centre(this.startCol), centre(this.startRow));
+      this.hero.setInvulnerable(1000);
       this.time.delayedCall(260, () => { this._dying = false; });
     });
   }

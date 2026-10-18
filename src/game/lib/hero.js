@@ -9,6 +9,7 @@ import { P } from './palette.js';
 import { HAZARD_KEYS } from './hazard-art.js';
 import { createPlayer } from './graphics.js';
 import { TILE_SIZE } from './constants.js';
+import { reducedMotion } from './fx.js';
 
 const OUTLINE_OFFSETS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 const FEET_Y = TILE_SIZE / 2 - 3;
@@ -115,6 +116,32 @@ export function createHero(scene, x, y, characterKey, { depth = 5, fx = null } =
       duration: 260,
       ease: 'Back.easeOut',
       onComplete: () => rig.startBreath(),
+    });
+  };
+
+  // Respawn grace: hazards ignore the hero while `rig.invulnerable` is set.
+  // The sprite (and so its outline/shadow via sync) flickers; reduced motion
+  // holds a steady half-alpha instead.
+  let flicker = null;
+  rig.invulnerable = false;
+  rig.setInvulnerable = (ms) => {
+    if (flicker) flicker.remove();
+    rig.invulnerable = true;
+    const steps = Math.max(1, Math.round(ms / 80));
+    const still = reducedMotion();
+    let n = 0;
+    sprite.setAlpha(still ? 0.55 : 0.35);
+    flicker = scene.time.addEvent({
+      delay: 80,
+      repeat: steps - 1,
+      callback: () => {
+        n++;
+        if (n >= steps) {
+          sprite.setAlpha(1);
+          rig.invulnerable = false;
+          flicker = null;
+        } else if (!still) sprite.setAlpha(n % 2 ? 1 : 0.35);
+      },
     });
   };
 

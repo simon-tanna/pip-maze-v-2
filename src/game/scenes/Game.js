@@ -6,6 +6,7 @@ import {
   generateLevel,
   criticalPath,
   isFair,
+  tileRng,
   tilesWithin,
 } from "../lib/generator.js";
 import { CHARACTER_CONFIGS, drawChest, drawKey } from "../lib/graphics.js";
@@ -13,6 +14,7 @@ import { P, LIGHT } from "../lib/palette.js";
 import { drawChamber, planDecor } from "../lib/environment.js";
 import {
   DEPTH,
+  HAZARD_CYCLE,
   createFlameTrap,
   createSpikeTrap,
   createBladeTrap,
@@ -28,6 +30,8 @@ import { createGridInput } from "../lib/grid-input.js";
 
 const T = TILE_SIZE;
 const centre = (n) => n * T + T / 2;
+// Hazards ignore the hero this long after a respawn.
+const RESPAWN_GRACE_MS = 1000;
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -64,6 +68,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const levelSeed = levelSeeds[this.levelIndex];
+    this.levelSeed = levelSeed;
     this.currentLevel = generateLevel(this.levelIndex, levelSeed);
     const levelData = this.currentLevel;
     this.map = levelData.map;
@@ -200,12 +205,22 @@ export class GameScene extends Phaser.Scene {
     this.chestLight = this.lights.addLight(x, y, 90, LIGHT.GOLD, 0.6);
   }
 
+  // Seeded start phase per tile, so hazards ripple instead of firing in unison
+  // and the same seed replays the same timing.
+  hazardPhase(trap, cycle) {
+    return Math.floor(tileRng(this.levelSeed, trap.col + 1000, trap.row + 1000)() * cycle);
+  }
+
   createTraps() {
     const traps = this.currentLevel.traps || [];
     traps.forEach((trap) => {
       if (trap.type === "flame")
         this.flameRects.push(
-          createFlameTrap(this, trap, { fx: this.fx, lit: true }),
+          createFlameTrap(this, trap, {
+            fx: this.fx,
+            lit: true,
+            phase: this.hazardPhase(trap, HAZARD_CYCLE.flame),
+          }),
         );
       if (trap.type === "blade") {
         const { zone, tween } = createBladeTrap(this, trap, {
@@ -220,6 +235,7 @@ export class GameScene extends Phaser.Scene {
           createSpikeTrap(this, trap, {
             fx: this.fx,
             onActive: () => this.checkSpikeHazards(),
+            phase: this.hazardPhase(trap, HAZARD_CYCLE.spike),
           }),
         );
       }
@@ -539,6 +555,7 @@ export class GameScene extends Phaser.Scene {
     this.hero.die(facing, () => {
       this.pip.play(`${this.playerAnimKey}-idle-down`);
       this.hero.respawn(centre(this.startCol), centre(this.startRow));
+      this.hero.setInvulnerable(RESPAWN_GRACE_MS);
       this.time.delayedCall(260, () => {
         this._dying = false;
       });
@@ -563,7 +580,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   checkHazards() {
-    if (this._winTriggered || this._dying) return;
+    if (this._winTriggered || this._dying || this.hero.invulnerable) return;
     for (const { rect, col, row } of this.flameRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.resetPip();
@@ -583,7 +600,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   checkBladeHazards() {
-    if (this._winTriggered || this._dying) return;
+    if (this._winTriggered || this._dying || this.hero.invulnerable) return;
     for (const { col, row, active } of this.bladeZones) {
       if (active() && this.pipCol === col && this.pipRow === row) {
         this.resetPip();
@@ -593,7 +610,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   checkSpikeHazards() {
-    if (this._winTriggered || this._dying) return;
+    if (this._winTriggered || this._dying || this.hero.invulnerable) return;
     for (const { rect, col, row } of this.spikeRects) {
       if (rect.active && this.pipCol === col && this.pipRow === row) {
         this.resetPip();
