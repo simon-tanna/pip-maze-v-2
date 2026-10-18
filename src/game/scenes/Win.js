@@ -2,33 +2,13 @@ import Phaser from 'phaser';
 import { TILE_SIZE } from '../lib/constants.js';
 import { LEVEL_CONFIGS } from '../lib/generator.js';
 import { CHARACTER_CONFIGS } from '../lib/graphics.js';
+import { P } from '../lib/palette.js';
+import { HAZARD_KEYS } from '../lib/hazard-art.js';
+import { TEXT } from '../lib/ui.js';
+import { iris, reducedMotion } from '../lib/fx.js';
 
-const BALL_X = 480;
-const BALL_Y = 70;
-const BALL_R = 60;
-const BEAM_HUES = [0, 60, 120, 200, 280, 320];
-const SPARK_HUES = [0, 45, 120, 180, 270, 320];
-const LIGHTNESS_STEPS = 16;
-
-function hslToHex(h, s, l) {
-  s /= 100; l /= 100;
-  const k = n => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
-  return (f(0) << 16) | (f(8) << 8) | f(4);
-}
-
-// Pre-bake [hueIdx][lightnessStep] colour tables once at module load.
-const BEAM_COLORS = BEAM_HUES.map(h => hslToHex(h, 100, 65));
-const FACET_LUT = BEAM_HUES.map(h => {
-  const row = [];
-  for (let i = 0; i < LIGHTNESS_STEPS; i++) {
-    const lightness = 40 + (i / (LIGHTNESS_STEPS - 1)) * 30;
-    row.push(hslToHex(h, 100, lightness));
-  }
-  return row;
-});
-const SPARK_COLORS = SPARK_HUES.map(h => hslToHex(h, 100, 65));
+const HERO_X = 480;
+const HERO_Y = 470;
 
 export class WinScene extends Phaser.Scene {
   constructor() { super('WinScene'); }
@@ -39,72 +19,63 @@ export class WinScene extends Phaser.Scene {
   }
 
   create(data = {}) {
-    const charKey = this.game.registry.get('character') || 'pip';
-    const winAnimKey = (CHARACTER_CONFIGS[charKey] && CHARACTER_CONFIGS[charKey].animKey) || 'pip';
-    this.pipWinSprite = this.add.image(480, 540, `${winAnimKey}-win`);
-    this.pipWinSprite.setScale((TILE_SIZE * 3) / this.pipWinSprite.height);
-
-    // Static rope + ball: draw once, never clear.
-    const staticGfx = this.add.graphics();
-    staticGfx.fillStyle(0x888888, 1);
-    staticGfx.fillRect(479, 0, 2, BALL_Y - BALL_R);
-    staticGfx.fillStyle(0xcccccc, 1);
-    staticGfx.fillCircle(BALL_X, BALL_Y, BALL_R);
-
-    // Dynamic beams + facets only.
-    this.discoGfx = this.add.graphics();
-
-    // Sparkle particle texture (cross shape, 6×6).
-    if (!this.textures.exists('win-sparkle')) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
-      g.fillStyle(0xffffff, 1);
-      g.fillRect(0, 2, 6, 2);
-      g.fillRect(2, 0, 2, 6);
-      g.generateTexture('win-sparkle', 6, 6);
-      g.destroy();
-    }
-
-    this.sparkleEmitter = this.add.particles(
-      this.pipWinSprite.x,
-      this.pipWinSprite.y - this.pipWinSprite.displayHeight * 0.25,
-      'win-sparkle',
-      {
-        speed: { min: 30, max: 150 },
-        angle: { min: 240, max: 300 },
-        gravityY: 180,
-        lifespan: 1000,
-        scale: { start: 1, end: 0 },
-        alpha: { start: 1, end: 0 },
-        tint: SPARK_COLORS,
-        frequency: 80,
-        quantity: 1,
-      },
-    );
-
-    this.events.once('shutdown', () => {
-      this.time.removeAllEvents();
-      this.pipWinSprite.destroy();
-      staticGfx.destroy();
-      this.discoGfx.destroy();
-      this.sparkleEmitter.destroy();
-    });
-
     const { level = 0 } = data;
     const gameComplete = (level + 1) >= LEVEL_CONFIGS.length;
+
+    this.add.rectangle(480, 360, 960, 720, P.SHADOW);
+
+    // Slowly turning gold rays behind the hero (one image, no per-frame redraw).
+    const rays = this.add.image(HERO_X, HERO_Y - 40, HAZARD_KEYS.rays)
+      .setScale(4.5).setTint(gameComplete ? P.FIRE : P.GOLD).setAlpha(0.32)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    if (!reducedMotion()) this.tweens.add({ targets: rays, angle: 360, duration: 40000, repeat: -1 });
+    this.add.image(HERO_X, HERO_Y - 40, HAZARD_KEYS.glow).setScale(6).setTint(P.GOLD_LIGHT)
+      .setAlpha(0.3).setBlendMode(Phaser.BlendModes.ADD);
+
+    // Plinth.
+    const plinth = this.add.graphics();
+    plinth.fillStyle(P.INK, 1).fillRect(HERO_X - 92, HERO_Y + 62, 184, 44);
+    plinth.fillStyle(P.STONE, 1).fillRect(HERO_X - 90, HERO_Y + 64, 180, 16);
+    plinth.fillStyle(P.SAND, 1).fillRect(HERO_X - 90, HERO_Y + 64, 180, 2);
+    plinth.fillStyle(P.STONE_SIDE, 1).fillRect(HERO_X - 90, HERO_Y + 80, 180, 24);
+    plinth.fillStyle(P.STONE_DARK, 1).fillRect(HERO_X - 90, HERO_Y + 90, 180, 1);
+    this.add.image(HERO_X, HERO_Y + 60, HAZARD_KEYS.shadow).setScale(3.5, 2);
+
+    const charKey = this.game.registry.get('character') || 'pip';
+    const winAnimKey = (CHARACTER_CONFIGS[charKey] && CHARACTER_CONFIGS[charKey].animKey) || 'pip';
+    const hero = this.add.image(HERO_X, HERO_Y + 64, `${winAnimKey}-win`).setOrigin(0.5, 1);
+    hero.setScale((TILE_SIZE * 3) / hero.height);
+    if (!reducedMotion()) {
+      this.tweens.add({
+        targets: hero, scaleY: hero.scaleY * 1.03, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+    }
+
+    this.add.particles(HERO_X, HERO_Y - 70, HAZARD_KEYS.sparkle, {
+      speed: { min: 60, max: 170 },
+      angle: { min: 235, max: 305 },
+      gravityY: 220,
+      lifespan: 1300,
+      scale: { start: 1.6, end: 0.2 },
+      alpha: { start: 1, end: 0 },
+      frequency: reducedMotion() ? 400 : 70,
+      reserve: 40,
+    });
+
     this.time.delayedCall(200, () => { this._inputReady = true; });
 
+    const headline = gameComplete ? 'THE FINAL CHAMBER AWAITS' : `CHAMBER ${level + 1} CLEARED`;
+    this.add.text(480, 120, headline, TEXT.heading(gameComplete ? 40 : 48, gameComplete ? P.FIRE_HOT : P.GOLD_LIGHT))
+      .setOrigin(0.5);
+    this.add.text(480, 182, gameComplete ? 'Something stirs beneath the temple…' : 'You found the treasure!',
+      TEXT.body(22, P.CREAM)).setOrigin(0.5);
+
+    const prompt = this.add.text(480, 640, gameComplete ? 'TAP TO DESCEND' : 'TAP TO CONTINUE', TEXT.label(16, P.FIRE_HOT))
+      .setOrigin(0.5);
+    this.tweens.add({ targets: prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
+
     if (gameComplete) {
-      this.add.text(480, 280, 'The final chamber awaits...', {
-        fontSize: '38px', color: '#ffd700', fontStyle: 'bold',
-        stroke: '#4a2800', strokeThickness: 6,
-        wordWrap: { width: 800 }, align: 'center'
-      }).setOrigin(0.5);
-
-      this.add.text(480, 400, 'Tap to descend', {
-        fontSize: '32px', color: '#fff9e6',
-        stroke: '#4a2800', strokeThickness: 4
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
+      prompt.setInteractive({ useHandCursor: true });
       const descend = () => {
         if (!this._inputReady || this._started) return;
         this._started = true;
@@ -113,15 +84,6 @@ export class WinScene extends Phaser.Scene {
       this.input.once('pointerdown', descend);
       this.input.keyboard.once('keydown', descend);
     } else {
-      this.add.text(480, 300, 'You found the treasure!', {
-        fontSize: '48px', color: '#ffd700', fontStyle: 'bold',
-        stroke: '#4a2800', strokeThickness: 6
-      }).setOrigin(0.5);
-
-      this.add.text(480, 400, 'Tap to continue', {
-        fontSize: '28px', color: '#fff9e6'
-      }).setOrigin(0.5);
-
       const advance = () => {
         if (!this._inputReady || this._started) return;
         this._started = true;
@@ -130,33 +92,8 @@ export class WinScene extends Phaser.Scene {
       this.input.once('pointerdown', advance);
       this.input.keyboard.once('keydown', advance);
     }
-  }
 
-  update(time) {
-    this.discoGfx.clear();
-
-    // Coloured beams from the ball.
-    for (let i = 0; i < 5; i++) {
-      const angle = time * 0.0015 + (i * Math.PI * 2 / 5);
-      const bx = BALL_X + Math.cos(angle) * 280;
-      this.discoGfx.fillStyle(BEAM_COLORS[i % BEAM_COLORS.length], 0.08);
-      this.discoGfx.fillTriangle(BALL_X, BALL_Y, bx - 40, 720, bx + 40, 720);
-    }
-
-    // Facet grid on the ball.
-    const ROWS = 4, COLS = 6;
-    for (let ri = 0; ri < ROWS; ri++) {
-      for (let ci = 0; ci < COLS; ci++) {
-        const facetIdx = ri * COLS + ci;
-        const phase = (time * 0.001 + ci / COLS) % 1;
-        const bright = (Math.sin(phase * Math.PI) + 1) / 2;
-        const alpha = 0.4 + bright * 0.5;
-        const lStep = (bright * (LIGHTNESS_STEPS - 1)) | 0;
-        const fx = BALL_X + Math.cos((ci / COLS) * Math.PI * 2 + time * 0.002) * BALL_R * 0.65;
-        const fy = BALL_Y + (ri - ROWS / 2 + 0.5) * (BALL_R / ROWS) * 1.4;
-        this.discoGfx.fillStyle(FACET_LUT[facetIdx % BEAM_HUES.length][lStep], alpha);
-        this.discoGfx.fillRect(fx - 4, fy - 4, 8, 8);
-      }
-    }
+    this.events.once('shutdown', () => this.time.removeAllEvents());
+    iris(this, HERO_X, HERO_Y, 'open', 420);
   }
 }
