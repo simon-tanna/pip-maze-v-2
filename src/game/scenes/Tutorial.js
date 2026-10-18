@@ -17,6 +17,7 @@ import { createWorldFx, flash, hitStop, iris } from '../lib/fx.js';
 import { TEXT, createButton } from '../lib/ui.js';
 import { TUTORIAL_CONFIGS } from '../lib/tutorial-config.js';
 import { hideDpad, showDpad, unwireDpad } from '../lib/dpad.js';
+import { createGridInput } from '../lib/grid-input.js';
 
 const T = TILE_SIZE;
 const centre = (n) => n * T + T / 2;
@@ -205,12 +206,9 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   setupInput() {
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = this.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.W,
-      down: Phaser.Input.Keyboard.KeyCodes.S,
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D,
+    // The auto-demo drives tryMove directly; player input waits for it to end.
+    this.gridInput = createGridInput(this, {
+      move: (dCol, dRow) => !this._demoRunning && this.tryMove(dCol, dRow),
     });
 
     this.input.keyboard.on('keydown-ZERO', () => this.handlePrevPhase());
@@ -219,20 +217,20 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   tryMove(dCol, dRow, onMoveDone = null) {
-    if (this.pipMoving || this._winTriggered || this._dying) return;
+    if (this.pipMoving || this._winTriggered || this._dying) return false;
     const newCol = this.pipCol + dCol;
     const newRow = this.pipRow + dRow;
 
-    if (newRow < 0 || newRow >= this.map.length) return;
-    if (newCol < 0 || newCol >= this.map[newRow].length) return;
-    if (this.map[newRow][newCol] === 1) return;
+    if (newRow < 0 || newRow >= this.map.length) return false;
+    if (newCol < 0 || newCol >= this.map[newRow].length) return false;
+    if (this.map[newRow][newCol] === 1) return false;
 
     if (dCol === -1) this.pipFacing = 'left';
     else if (dCol === 1) this.pipFacing = 'right';
     else if (dRow === -1) this.pipFacing = 'up';
     else this.pipFacing = 'down';
 
-    this.pip.play(`${this.playerAnimKey}-walk-${this.pipFacing}`);
+    this.pip.play(`${this.playerAnimKey}-walk-${this.pipFacing}`, true);
     this.hero.step();
     this.pipCol = newCol;
     this.pipRow = newRow;
@@ -245,16 +243,18 @@ export class TutorialScene extends Phaser.Scene {
       duration: 120,
       ease: 'Linear',
       onComplete: () => {
-        this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
         this.hero.land();
         this.pipMoving = false;
         this.checkHazards();
         this.checkBladeHazards();
         this.checkSpikeHazards();
         this.checkWin();
+        const chained = !onMoveDone && this.gridInput.update();
+        if (!chained && !this._dying) this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
         if (onMoveDone) onMoveDone();
       },
     });
+    return true;
   }
 
   checkHazards() {
@@ -365,14 +365,7 @@ export class TutorialScene extends Phaser.Scene {
       return;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) this.tryMove(0, -1);
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) this.tryMove(0, 1);
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) this.tryMove(-1, 0);
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) this.tryMove(1, 0);
-    if (Phaser.Input.Keyboard.JustDown(this.wasd.up)) this.tryMove(0, -1);
-    if (Phaser.Input.Keyboard.JustDown(this.wasd.down)) this.tryMove(0, 1);
-    if (Phaser.Input.Keyboard.JustDown(this.wasd.left)) this.tryMove(-1, 0);
-    if (Phaser.Input.Keyboard.JustDown(this.wasd.right)) this.tryMove(1, 0);
+    if (!this.pipMoving) this.gridInput.update();
 
     this.updateArrow();
   }

@@ -23,7 +23,8 @@ import { createHero } from "../lib/hero.js";
 import { createWorldFx, flash, hitStop, iris, shake } from "../lib/fx.js";
 import { TEXT } from "../lib/ui.js";
 import { hudKeySlotPos } from "./Hud.js";
-import { showDpad, wireDpad, unwireDpad } from "../lib/dpad.js";
+import { showDpad } from "../lib/dpad.js";
+import { createGridInput } from "../lib/grid-input.js";
 
 const T = TILE_SIZE;
 const centre = (n) => n * T + T / 2;
@@ -171,7 +172,6 @@ export class GameScene extends Phaser.Scene {
       this.tweens.timeScale = 1;
       this.time.timeScale = 1;
       this.mummyList.forEach((m) => m.stop());
-      unwireDpad(this);
     });
 
     showDpad();
@@ -341,33 +341,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   setupInput() {
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = this.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.W,
-      down: Phaser.Input.Keyboard.KeyCodes.S,
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D,
-    });
-
-    wireDpad(this, (dCol, dRow) => this.tryMove(dCol, dRow));
+    this.gridInput = createGridInput(this, { move: (dCol, dRow) => this.tryMove(dCol, dRow), dpad: true });
   }
 
+  // Starts one 120ms step; returns false when the hero can't move that way.
   tryMove(dCol, dRow) {
-    if (this.pipMoving || this._winTriggered || this._dying) return;
+    if (this.pipMoving || this._winTriggered || this._dying) return false;
     const newCol = this.pipCol + dCol;
     const newRow = this.pipRow + dRow;
 
-    if (newRow < 0 || newRow >= this.map.length) return;
-    if (newCol < 0 || newCol >= this.map[newRow].length) return;
+    if (newRow < 0 || newRow >= this.map.length) return false;
+    if (newCol < 0 || newCol >= this.map[newRow].length) return false;
 
-    if (this.map[newRow][newCol] === 1) return;
+    if (this.map[newRow][newCol] === 1) return false;
 
     if (dCol === -1) this.pipFacing = "left";
     else if (dCol === 1) this.pipFacing = "right";
     else if (dRow === -1) this.pipFacing = "up";
     else this.pipFacing = "down";
 
-    this.pip.play(`${this.playerAnimKey}-walk-${this.pipFacing}`);
+    // ignoreIfPlaying keeps the walk cycle smooth across consecutive steps.
+    this.pip.play(`${this.playerAnimKey}-walk-${this.pipFacing}`, true);
     this.hero.step();
 
     this.pipCol = newCol;
@@ -381,15 +375,19 @@ export class GameScene extends Phaser.Scene {
       duration: 120,
       ease: "Linear",
       onComplete: () => {
-        this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
         this.hero.land();
         this.pipMoving = false;
         this.checkHazards();
         this.checkBladeHazards();
         this.checkSpikeHazards();
         this.checkWin();
+        // Chain straight into the next held/buffered step, else go idle.
+        if (!this.gridInput.update() && !this._dying) {
+          this.pip.play(`${this.playerAnimKey}-idle-${this.pipFacing}`);
+        }
       },
     });
+    return true;
   }
 
   hud(msg) {
@@ -609,26 +607,7 @@ export class GameScene extends Phaser.Scene {
     this.hero.sync();
     this.torch.x = this.pip.x;
     this.torch.y = this.pip.y;
-
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.up)
-    )
-      this.tryMove(0, -1);
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.down) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.down)
-    )
-      this.tryMove(0, 1);
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.left) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.left)
-    )
-      this.tryMove(-1, 0);
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.right) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.right)
-    )
-      this.tryMove(1, 0);
+    // Picks up held keys after a respawn or hit-stop; steps chain on landing.
+    if (!this.pipMoving) this.gridInput.update();
   }
 }

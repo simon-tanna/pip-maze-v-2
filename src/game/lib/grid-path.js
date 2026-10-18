@@ -3,7 +3,12 @@
 // a head index instead of string keys and queue.shift(); buffers are reused.
 
 // Same-row neighbours first, so patrollers prefer to stay on their row.
-const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const DIRS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 
 export function createGridPathfinder(map) {
   const ROWS = map.length;
@@ -29,7 +34,8 @@ export function createGridPathfinder(map) {
       const cur = queue[head++];
       if (cur === goal) {
         const out = [];
-        for (let i = cur; i !== start; i = parent[i]) out.push({ col: i % COLS, row: (i / COLS) | 0 });
+        for (let i = cur; i !== start; i = parent[i])
+          out.push({ col: i % COLS, row: (i / COLS) | 0 });
         return out.reverse();
       }
       const c = cur % COLS;
@@ -92,9 +98,16 @@ export function hasLineOfSight(map, a, b, range) {
     const e2 = 2 * err;
     const stepX = e2 > -dy;
     const stepY = e2 < dx;
-    if (stepX && stepY && map[y][x + sx] === 1 && map[y + sy][x] === 1) return false;
-    if (stepX) { err -= dy; x += sx; }
-    if (stepY) { err += dx; y += sy; }
+    if (stepX && stepY && map[y][x + sx] === 1 && map[y + sy][x] === 1)
+      return false;
+    if (stepX) {
+      err -= dy;
+      x += sx;
+    }
+    if (stepY) {
+      err += dx;
+      y += sy;
+    }
     if ((x !== b.col || y !== b.row) && map[y][x] === 1) return false;
   }
   return true;

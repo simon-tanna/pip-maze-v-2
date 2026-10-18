@@ -23,7 +23,9 @@ export function showFireButton(visible) {
 
 // Wires the four d-pad buttons to onDir(dCol, dRow) and stores the
 // listeners on the scene so unwireDpad() can remove them on shutdown.
-export function wireDpad(scene, onDir) {
+// The optional onRelease(dCol, dRow) fires when a finger lifts or slides
+// off a button, for hold-to-walk.
+export function wireDpad(scene, onDir, onRelease = null) {
   const handlers = [];
   const map = [
     ['btn-up', 0, -1],
@@ -39,15 +41,22 @@ export function wireDpad(scene, onDir) {
       onDir(dCol, dRow);
     };
     btn.addEventListener('pointerdown', fn);
-    handlers.push({ el: btn, fn });
+    handlers.push({ el: btn, type: 'pointerdown', fn });
+    if (onRelease) {
+      const up = () => onRelease(dCol, dRow);
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => {
+        btn.addEventListener(type, up);
+        handlers.push({ el: btn, type, fn: up });
+      });
+    }
   });
   scene._dpadHandlers = handlers;
 }
 
 export function unwireDpad(scene) {
   if (!scene._dpadHandlers) return;
-  scene._dpadHandlers.forEach(({ el, fn }) => {
-    el.removeEventListener('pointerdown', fn);
+  scene._dpadHandlers.forEach(({ el, type, fn }) => {
+    el.removeEventListener(type, fn);
   });
   scene._dpadHandlers = null;
 }
