@@ -220,11 +220,12 @@ export class GameScene extends Phaser.Scene {
             fx: this.fx,
             lit: true,
             phase: this.hazardPhase(trap, HAZARD_CYCLE.flame),
+            onIgnite: () => this.onHazardLive(trap),
           }),
         );
       if (trap.type === "blade") {
         const { zone, tween } = createBladeTrap(this, trap, {
-          onEnter: () => this.checkBladeHazards(),
+          onEnter: () => this.onHazardLive(trap),
         });
         this.bladeZones.push(zone);
         this._bladeTweens.push(tween);
@@ -234,12 +235,23 @@ export class GameScene extends Phaser.Scene {
         this.spikeRects.push(
           createSpikeTrap(this, trap, {
             fx: this.fx,
-            onActive: () => this.checkSpikeHazards(),
+            onActive: () => this.onHazardLive(trap),
             phase: this.hazardPhase(trap, HAZARD_CYCLE.spike),
           }),
         );
       }
     });
+  }
+
+  // A hazard just turned dangerous: whoever is standing on its tile dies.
+  // Landing/step checks alone miss anyone who was already there.
+  onHazardLive({ col, row }) {
+    this.mummyList
+      .filter((m) => m.col === col && m.row === row)
+      .forEach((m) => this._killMummy(m));
+    this.checkHazards();
+    this.checkBladeHazards();
+    this.checkSpikeHazards();
   }
 
   // Key visuals: glow filter, gentle bob and a small gold light.

@@ -63,6 +63,7 @@ Helper modules and scenes are `.js`. Vite + the template's `tsconfig.json` (with
 - **Lighting:** the chamber/arena image gets `setLighting(true)`; hazards, pickups and the hero stay unlit so they read at full brightness. Lights: hero torch, flames (only while telegraphing/firing), pickups, lava. Phaser culls to 10 lights per camera.
 - **Light comes from the top-left**; never rotate a texture with baked lighting (vary by pattern instead).
 - **Telegraphs live inside the original hazard timings** (`HAZARD_TIMING`), so difficulty is unchanged. Flame/spike records expose `rect.active` and `rect.telegraph`.
+- **Hazard activation re-checks occupants.** Damage is otherwise only checked when the hero lands or a mummy finishes a step, so every controller's go-live hook (`onIgnite`, `onActive`, `onEnter`) must route to `GameScene.onHazardLive(trap)`, which kills the hero or a mummy already standing on the tile.
 - **Depth bands:** chamber 0, hazard bases 2, pickups 3, hazards 4, hero 5, world FX 6.
 - **Dev tooling:** in dev builds `window.__game` is the Phaser.Game and `ArtLabScene` shows every baked asset (`__game.scene.start('ArtLabScene')`). Neither ships in production builds.
 - Scene gotcha: don't `stop()` a scene and `start()` it again in the same tick from outside Phaser; use `scene.restart()`.

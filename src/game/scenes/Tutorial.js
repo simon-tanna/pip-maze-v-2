@@ -134,7 +134,9 @@ export class TutorialScene extends Phaser.Scene {
   createTraps() {
     const traps = TUTORIAL_CONFIGS[this.currentPhase].traps || [];
     traps.forEach((trap) => {
-      if (trap.type === 'flame') this.flameRects.push(createFlameTrap(this, trap, { fx: this.fx, lit: true }));
+      if (trap.type === 'flame') {
+        this.flameRects.push(createFlameTrap(this, trap, { fx: this.fx, lit: true, onIgnite: () => this.checkHazards() }));
+      }
       if (trap.type === 'blade') {
         const { zone, tween } = createBladeTrap(this, trap, { onEnter: () => this.checkBladeHazards() });
         this.bladeZones.push(zone);
