@@ -129,6 +129,13 @@ export const LEVEL_CONFIGS = [
 export const SPAWN_SAFE_RADIUS = 2;
 // Minimum hazard-free tiles between two different hazards on the critical route.
 export const REST_GAP = 2;
+// Coins per chamber (inclusive), drawn from their own salted RNG so adding
+// them never shifts the maze/trap stream of an existing seed.
+export const COIN_MIN = 2;
+export const COIN_MAX = 5;
+export const COIN_SALT = 0x9e3779b9;
+// Preferred minimum route-index gap between two coins.
+export const COIN_SPACING = 3;
 
 const DIRS = [
   [0, -1],
@@ -311,7 +318,7 @@ function minRestGap(route, hazards) {
 //  - a start → key (→ key2) → chest route exists around every mummy patrol
 //    (flames, spikes and blades are timed, so they count as passable)
 //  - nothing dangerous within SPAWN_SAFE_RADIUS of the start
-//  - keys and the chest never sit under a hazard
+//  - keys, coins and the chest never sit under a hazard
 //  - at least REST_GAP safe tiles between hazards on that route
 export function isFair(level) {
   const { map, traps } = level;
@@ -324,6 +331,10 @@ export function isFair(level) {
   for (const s of stops.slice(1)) {
     const k = tileKey(s.col, s.row);
     if (patrol.has(k) || hazards.has(k)) return { fair: false, reason: "key or chest under a hazard" };
+  }
+  for (const c of level.coins ?? []) {
+    const k = tileKey(c.col, c.row);
+    if (patrol.has(k) || hazards.has(k)) return { fair: false, reason: "coin under a hazard" };
   }
   const route = safeRoute(map, stops, patrol);
   if (!route) return { fair: false, reason: "route cut off by a mummy patrol" };
@@ -583,7 +594,30 @@ function _generateOnce(levelIndex, seed, config) {
     placedTypes.add(requiredType);
   }
 
-  return { map, key, key2, traps, exitCol, exitRow };
+  // Coins sit on free route tiles, spread out first, then topped up.
+  const coinRng = mulberry32((seed ^ COIN_SALT) >>> 0);
+  const firstVisit = (k) => visits.get(k)[0];
+  const coinSpots = shuffle(coinRng, [...visits.keys()].filter((k) => {
+    const [c, r] = k.split(",").map(Number);
+    return map[r][c] === 0 && !occupied.has(k);
+  }));
+  if (coinSpots.length < COIN_MIN) return null;
+  const coinCount = randInt(coinRng, COIN_MIN, COIN_MAX);
+  const picked = [];
+  for (const k of coinSpots) {
+    if (picked.length >= coinCount) break;
+    if (picked.every((p) => Math.abs(firstVisit(p) - firstVisit(k)) >= COIN_SPACING)) picked.push(k);
+  }
+  for (const k of coinSpots) {
+    if (picked.length >= coinCount) break;
+    if (!picked.includes(k)) picked.push(k);
+  }
+  const coins = picked.map((k) => {
+    const [col, row] = k.split(",").map(Number);
+    return { col, row };
+  });
+
+  return { map, key, key2, traps, coins, exitCol, exitRow };
 }
 
 const CANDIDATES = 6;
