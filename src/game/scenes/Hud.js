@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { P } from '../lib/palette.js';
 import { TEXT, drawPanel } from '../lib/ui.js';
-import { HAZARD_KEYS, bakeHazardTextures } from '../lib/hazard-art.js';
+import { HAZARD_KEYS, COIN_SIZE, bakeHazardTextures } from '../lib/hazard-art.js';
 import { reducedMotion } from '../lib/fx.js';
 
 const W = 960;
@@ -31,6 +31,8 @@ export class HudScene extends Phaser.Scene {
     this._hearts = [];
     this._bossSegments = [];
     this._hint = null;
+    // Screen-space centre of the coin icon, so the source scene can fly coins to it.
+    this.coinIconPos = null;
   }
 
   create() {
@@ -49,6 +51,7 @@ export class HudScene extends Phaser.Scene {
     switch (msg.type) {
       case 'keys': this.setKeys(msg.collected, msg.required); break;
       case 'player': this.setPlayer(msg.name, msg.coins); break;
+      case 'coins': this.setCoins(msg.coins, msg.animate); break;
       case 'toast': this.toast(msg.text, msg.color); break;
       case 'instruction': this.setInstruction(msg.text); break;
       case 'instruction-fade': this.fadeInstruction(); break;
@@ -62,7 +65,11 @@ export class HudScene extends Phaser.Scene {
   // ── Chamber / tutorial ──────────────────────────────────
   buildChamber() {
     const title = this.add.text(28, TOP + 6, this.initial.title || '', TEXT.heading(22, P.CREAM));
-    drawPanel(this, 16, TOP - 2, title.width + 26, SLOT + 4).setDepth(-1);
+    const titleW = title.width + 26;
+    drawPanel(this, 16, TOP - 2, titleW, SLOT + 4).setDepth(-1);
+    if (this.mode === 'chamber' && this.initial.player) {
+      this.buildCoinPanel(16 + titleW + 12, this.initial.player.coins);
+    }
 
     const required = this.initial.requiredKeys || 0;
     for (let i = 0; i < required; i++) {
@@ -79,22 +86,43 @@ export class HudScene extends Phaser.Scene {
 
   buildPlayerTag(required) {
     const right = required ? hudKeySlotPos(0, required).x - SLOT / 2 - 14 : W - 16;
-    this._playerName = this.add.text(right, TOP + 2, '', TEXT.body(15, P.CREAM)).setOrigin(1, 0);
-    this._coinText = this.add.text(right, TOP + 22, '', TEXT.body(14, P.GOLD_LIGHT)).setOrigin(1, 0);
-    this._coin = this.add.graphics();
+    this._playerName = this.add.text(right, TOP + 20, '', TEXT.body(15, P.CREAM)).setOrigin(1, 0.5);
     this.setPlayer(this.initial.player.name, this.initial.player.coins);
   }
 
   setPlayer(name, coins) {
     if (!this._playerName) return;
     this._playerName.setText(name);
+    if (this._coinText) this.setCoins(coins, false);
+  }
+
+  // Coin balance panel, just right of the chamber title.
+  buildCoinPanel(x, coins) {
+    this._coinX = x;
+    this._coinIcon = this.add.image(x + 10 + COIN_SIZE / 2, TOP + 20, HAZARD_KEYS.coin(0));
+    this._coinText = this.add.text(x + 10 + COIN_SIZE + 8, TOP + 21, '', TEXT.heading(22, P.GOLD_LIGHT))
+      .setOrigin(0, 0.5);
+    this.coinIconPos = { x: this._coinIcon.x, y: this._coinIcon.y };
+    this.setCoins(coins, false);
+  }
+
+  setCoins(coins, animate) {
+    if (!this._coinText) return;
     this._coinText.setText(String(coins));
-    const cx = this._coinText.x - this._coinText.width - 10;
-    const cy = this._coinText.y + 9;
-    this._coin.clear();
-    this._coin.fillStyle(P.INK, 1).fillCircle(cx, cy, 6);
-    this._coin.fillStyle(P.GOLD, 1).fillCircle(cx, cy, 5);
-    this._coin.fillStyle(P.GOLD_LIGHT, 1).fillRect(cx - 2, cy - 3, 2, 2);
+    const w = 10 + COIN_SIZE + 8 + Math.ceil(this._coinText.width) + 12;
+    if (w !== this._coinPanelW) {
+      this._coinPanel?.destroy();
+      this._coinPanel = drawPanel(this, this._coinX, TOP - 2, w, SLOT + 4, { accent: P.GOLD_DARK }).setDepth(-1);
+      this._coinPanelW = w;
+    }
+    if (!animate || reducedMotion()) return;
+    this.tweens.killTweensOf([this._coinIcon, this._coinText]);
+    this._coinIcon.setScale(1.3);
+    this._coinText.setScale(1.3);
+    this.tweens.add({ targets: [this._coinIcon, this._coinText], scale: 1, duration: 200, ease: 'Back.easeOut' });
+    const { x, y } = this.coinIconPos;
+    const plus = this.add.text(x + 6, y + 30, '+1', TEXT.heading(16, P.GOLD_LIGHT)).setOrigin(0.5);
+    this.tweens.add({ targets: plus, y: y + 12, alpha: 0, duration: 800, onComplete: () => plus.destroy() });
   }
 
   setKeys(collected, required) {
