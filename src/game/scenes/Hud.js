@@ -33,6 +33,11 @@ export class HudScene extends Phaser.Scene {
     this._hint = null;
     // Screen-space centre of the coin icon, so the source scene can fly coins to it.
     this.coinIconPos = null;
+    // The scene instance is reused across launches; drop refs to destroyed objects.
+    this._coinPanel = null;
+    this._coinPanelW = 0;
+    this._coinIcon = null;
+    this._coinText = null;
   }
 
   create() {
