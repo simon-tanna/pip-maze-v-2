@@ -27,6 +27,8 @@ import { TEXT } from "../lib/ui.js";
 import { hudKeySlotPos } from "./Hud.js";
 import { showDpad } from "../lib/dpad.js";
 import { createGridInput } from "../lib/grid-input.js";
+import { createCoins } from "../lib/coins.js";
+import { setPlayerCoins } from "../lib/player-db.js";
 
 const T = TILE_SIZE;
 const centre = (n) => n * T + T / 2;
@@ -124,6 +126,7 @@ export class GameScene extends Phaser.Scene {
       } else avoid.add(`${t.col},${t.row}`);
     });
     this.keyState.forEach((k) => avoid.add(`${k.col},${k.row}`));
+    (levelData.coins || []).forEach((c) => avoid.add(`${c.col},${c.row}`));
     drawChamber(this, this.map, levelSeed, {
       decor: planDecor(this.map, levelSeed, avoid),
     })
@@ -180,6 +183,8 @@ export class GameScene extends Phaser.Scene {
       this.tweens.timeScale = 1;
       this.time.timeScale = 1;
       this.mummyList.forEach((m) => m.stop());
+      this.coins?.destroy();
+      this.coins = null;
     });
 
     showDpad();
@@ -188,6 +193,15 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.createTraps();
     this.createKey();
+    this.coins = createCoins(this, this.currentLevel.coins || [], {
+      fx: this.fx,
+      seed: this.levelSeed,
+      target: () => this.scene.get("HudScene")?.coinIconPos ?? null,
+      onCollect: () => this.collectCoin(),
+      onLand: (balance) => {
+        if (balance != null) this.hud({ type: "coins", coins: balance, animate: true });
+      },
+    });
     iris(this, this.pip.x, this.pip.y, "open", 420);
   }
 
@@ -473,8 +487,17 @@ export class GameScene extends Phaser.Scene {
     this.hud({ type: "toast", text: message });
   }
 
+  // Banks the coin straight away; returns the new balance (null if no player).
+  collectCoin() {
+    const player = this.game.registry.get("activePlayer");
+    if (!player) return null;
+    setPlayerCoins(this.game, player.name, 1);
+    return this.game.registry.get("activePlayer").coin_balance;
+  }
+
   checkWin() {
     if (this._winTriggered) return;
+    this.coins?.tryCollect(this.pipCol, this.pipRow);
 
     if (
       this.keysCollected === 0 &&

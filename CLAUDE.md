@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` — production build to `dist/`
 - `npm run dev-nolog` / `npm run build-nolog` — same as above but skip `log.js`
 
-No test, lint, or typecheck scripts are configured. Run `npx tsc --noEmit` to type-check explicitly. Vite configs are split: `vite/config.dev.mjs` and `vite/config.prod.mjs`.
+`npm test` runs the Node built-in test runner over `tests/**/*.test.mjs` (generator only). No lint or typecheck scripts are configured. Run `npx tsc --noEmit` to type-check explicitly. Vite configs are split: `vite/config.dev.mjs` and `vite/config.prod.mjs`.
 
 ## Architecture
 
@@ -29,11 +29,11 @@ Scenes live in `src/game/scenes/` as `Boot.js`, `Player.js`, `Title.js`, `Game.j
 1. **BootScene** — loads sprite sheets and key/chest images, registers idle+walk animations per character, bakes every procedural texture (`bakeEnvironmentTextures`, `bakeHazardTextures`) and hazard animations, loads Black Ops One + Pixelify Sans via WebFont.
 2. **PlayerScene** — player-name entry / selection (`lib/player-db.js`, localStorage).
 3. **TitleScene** — DOOM MAZE logotype with a "Pip's Temple Adventure" subtitle, lit temple backdrop, three-plinth character carousel (left/right; down/up moves focus to Tutorial / Boss buttons). Resets per-level seeds on entry.
-4. **GameScene** — main gameplay. 40×15 tile world; camera follows the hero. Reads procedural level from `lib/generator.js`, validates start→key→chest BFS path, bakes the chamber, spawns hazards from `lib/hazards.js`, launches `HudScene`.
+4. **GameScene** — main gameplay. 40×15 tile world; camera follows the hero. Reads procedural level from `lib/generator.js`, validates start→key→chest BFS path, bakes the chamber, spawns hazards from `lib/hazards.js` and coins from `lib/coins.js`, launches `HudScene`.
 5. **WinScene** — rays + plinth victory screen; "Tap to continue" advances level (`GameScene` with `level+1`). After level 9 (final `LEVEL_CONFIGS` entry) it routes to `BossScene` instead.
 6. **TutorialScene** — 3 phases (blade, flame, spike), each with an auto-demo then player practice; uses the same chamber/hazard/hero code as GameScene and `HudScene` in tutorial mode.
 7. **BossScene** — boss arena (pillars + lava). Entered from `WinScene` after final level or directly from Title. Hero HP and boss HP both 3; uses i-frame `_heroInvincible`/`_bossInvincible` flags. Charge and stomp have telegraphs inside their existing idle/recovery windows.
-8. **HudScene** — parallel overlay launched by Game/Tutorial/Boss (`mode: 'chamber' | 'tutorial' | 'boss'`). Listed last in `main.ts` so it renders on top. The source scene drives it with `this.events.emit('hud', { type, ... })`; the HUD stops itself when its source shuts down. Keeping the HUD in its own scene means camera filters (vignette, iris) never touch it.
+8. **HudScene** — parallel overlay launched by Game/Tutorial/Boss (`mode: 'chamber' | 'tutorial' | 'boss'`). Listed last in `main.ts` so it renders on top. The source scene drives it with `this.events.emit('hud', { type, ... })`; the HUD stops itself when its source shuts down. Keeping the HUD in its own scene means camera filters (vignette, iris) never touch it. In chamber mode it also shows a coin panel next to the title (`'coins'` message; `HudScene#coinIconPos` is the fly-to point).
 
 ## Module layout
 
@@ -42,6 +42,7 @@ Scenes live in `src/game/scenes/` as `Boot.js`, `Player.js`, `Title.js`, `Game.j
 - `src/game/lib/environment.js` — 4-bit autotiled walls (front face when the tile below is open), flagstone floors, stepped AO, `planDecor` (sparse, wall-hugging, avoids hazards and the critical path), `drawChamber` (bakes a whole chamber into one DynamicTexture image), `drawTempleBackdrop` (menus), boss-arena textures
 - `src/game/lib/hazard-art.js` — baked hazard/FX/UI textures (`HAZARD_KEYS`): spike idle/armed/up, nozzle idle/hot, 4-frame flame, axe blade, 4-frame mummy (+ alert eyes), dust/ember/sparkle/glow/rays, hearts, arrow, decor; `registerHazardAnimations`
 - `src/game/lib/hazards.js` — runtime hazard controllers shared by Game and Tutorial (`createFlameTrap`, `createSpikeTrap`, `createBladeTrap`, mummy visuals), `HAZARD_TIMING`, `DEPTH`
+- `src/game/lib/coins.js` — `createCoins`: chamber coin pickups (glow, bob, seeded shine sweep + glint), bank on pickup via `onCollect`, fly to the HUD coin panel then `onLand`
 - `src/game/lib/hero.js` — `createHero`: outline (4 FILL-tinted copies), contact shadow, step squash, dust, idle breathing, hit flash, die/respawn. Call `rig.sync()` every frame.
 - `src/game/lib/fx.js` — `shake`, `hitStop`, `flash`, `iris` transition, pooled particle bursts (`createWorldFx`); all honour `prefers-reduced-motion`
 - `src/game/lib/ui.js` — `FONT`, `TEXT` styles (Black Ops One display, Pixelify Sans body), `drawPanel`, `createButton`
@@ -71,10 +72,11 @@ Helper modules and scenes are `.js`. Vite + the template's `tsconfig.json` (with
 ## Game logic notes
 
 - **Levels** are procedurally generated by `generateLevel(levelIndex, seed)`. Seeds are stored in `game.registry` under `levelSeeds` so the same level replays deterministically until the player resets via the Title screen. Hazard start phases are seeded too (`GameScene.hazardPhase`), so never use `Math.random` for anything level-visible.
-- **Generator:** DFS maze + `rooms` (3×3 / 5×3) + loops; mummies placed first (only where a route around remains), then 60% of `trapCount` along the safe route. `generateLevel` keeps the best of 6 fair candidates (`seed + attempt`) scored against `targetCrit` / `targetDensity`. `isFair` rules: route around every mummy patrol, nothing within `SPAWN_SAFE_RADIUS` (2) of the start, nothing on keys/chest, at least `REST_GAP` (2) clear tiles between hazards on the route. Timed traps (flame/spike/blade) count as passable. Blades only spawn in walled east-west corridors.
+- **Generator:** DFS maze + `rooms` (3×3 / 5×3) + loops; mummies placed first (only where a route around remains), then 60% of `trapCount` along the safe route. `generateLevel` keeps the best of 6 fair candidates (`seed + attempt`) scored against `targetCrit` / `targetDensity`. `isFair` rules: route around every mummy patrol, nothing within `SPAWN_SAFE_RADIUS` (2) of the start, nothing on keys/chest, at least `REST_GAP` (2) clear tiles between hazards on the route. Timed traps (flame/spike/blade) count as passable. Each level also gets 2–5 `coins` on free route tiles (never on a trap, patrol, key, chest or spawn zone), drawn from their own salted RNG so adding them never shifts an existing seed; `tests/generator-coins.test.mjs` (`npm test`) pins this against a pre-coin snapshot. Blades only spawn in walled east-west corridors.
 - **Map tile values:** `0` = floor, `1` = wall, `2` = start, `3` = chest exit.
 - **Dual-key levels** (index ≥ 3): pick up Key 1 → Key 2 reveals → grab Key 2 → reach chest. Losing a key on hazard contact respawns it.
 - **Movement** is grid-snap via tweens (120ms per tile); not physics-based. Input goes through `lib/grid-input.js` (hold to walk, buffered turns); don't poll `Key.JustDown`, it drops sub-frame taps.
+- **Coins** bank the moment they're picked up (`setPlayerCoins`); dying never removes them. They only exist in chambers, not the Tutorial or Boss arena.
 - **Respawn grace:** after a death the hero is invulnerable for 1s (`rig.setInvulnerable`, flicker); hazard checks return early while `hero.invulnerable`.
 - **D-pad markup in `index.html`** is required — `GameScene` wires the buttons via `lib/dpad.js` (`wireDpad`), Boss wires its own hold handlers, and Title/Tutorial call `hideDpad`/`showDpad`. The pad is styled in `public/style.css` and only shown on touch devices.
 
