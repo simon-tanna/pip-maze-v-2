@@ -43,6 +43,9 @@ export class GameScene extends Phaser.Scene {
     this.flameRects = [];
     this.bladeZones = [];
     this.mummyList = [];
+    // Phaser reuses this instance across levels; drop the previous map's pathfinder.
+    this.pathfinder = null;
+    this.spawnZone = null;
     this._bladeTweens = [];
     this.spikeRects = [];
     this._winTriggered = false;
