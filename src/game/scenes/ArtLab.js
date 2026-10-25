@@ -53,6 +53,8 @@ export class ArtLabScene extends Phaser.Scene {
       ['blade', (c) => c.add(this.add.image(0, -22, HAZARD_KEYS.blade)
         .setOrigin(BLADE_PIVOT.x, BLADE_PIVOT.y).setAngle(-20))],
       ['mummy', (c) => c.add(this.add.sprite(0, 0, HAZARD_KEYS.mummy(0, false)).play('hz-mummy-walk'))],
+      ['coin', (c) => c.add(this.add.sprite(0, 0, HAZARD_KEYS.coin(0))
+        .play({ key: 'pk-coin-shine', repeat: -1, repeatDelay: 1100 }))],
     ]);
 
     row(560, 'CHARACTERS · FX · DECOR', [

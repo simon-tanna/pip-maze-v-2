@@ -11,6 +11,9 @@ export const NOZZLE_STATE = { IDLE: 0, HOT: 1 };
 export const FLAME_FRAMES = 4;
 export const FLAME_W = 48;
 export const FLAME_H = 64;
+// Coin: frame 0 is the plain face, frames 1..5 sweep a shine band across it.
+export const COIN_FRAMES = 6;
+export const COIN_SIZE = 24;
 
 function rect(g, color, x, y, w = 1, h = 1, alpha = 1) {
   g.fillStyle(color, alpha);
@@ -217,6 +220,30 @@ function paintSparkle(g) {
   rect(g, P.FIRE_CORE, 2, 2, 3, 3);
 }
 
+// 12×12 art pixels at 2px: ink ring, rim lit top-left, gold face, small
+// cross emblem. Sweep frames add a cream diagonal band, top-left → bottom-right.
+function paintCoin(g, frame) {
+  const N = 12;
+  const sweep = frame >= 1 ? -7 + (frame - 1) * 3.5 : null;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const dx = (x + 0.5 - 6) / 6;
+      const dy = (y + 0.5 - 6) / 6;
+      if (dx * dx + dy * dy > 1) continue;
+      const ix = (x + 0.5 - 6) / 5;
+      const iy = (y + 0.5 - 6) / 5;
+      const inner = ix * ix + iy * iy;
+      let col;
+      if (inner > 1) col = P.INK;
+      else if (inner > 0.55) col = dx + dy < 0 ? P.GOLD_LIGHT : P.GOLD_DARK;
+      else if ((x === 6 && y >= 4 && y <= 7) || (y === 5 && x >= 5 && x <= 7)) col = P.GOLD_DARK;
+      else col = P.GOLD;
+      if (sweep !== null && inner <= 1 && Math.abs(x - y - sweep) < 1.2) col = P.CREAM;
+      rect(g, col, x * 2, y * 2, 2, 2);
+    }
+  }
+}
+
 // Stepped radial halo for ADD-blended glows (no blur filters).
 function paintGlow(g) {
   [[16, 0.08], [12, 0.12], [8, 0.18], [4, 0.28]].forEach(([r, a]) => {
@@ -315,6 +342,7 @@ export const HAZARD_KEYS = {
   dust: 'fx-dust',
   ember: 'fx-ember',
   shadow: 'fx-shadow',
+  coin: (frame) => `pk-coin-${frame}`,
   sparkle: 'fx-sparkle',
   glow: 'fx-glow',
   rays: 'fx-rays',
@@ -339,6 +367,7 @@ export function bakeHazardTextures(scene) {
     bake(HAZARD_KEYS.mummy(f, false), 48, 48, (g) => paintMummy(g, f, false));
     bake(HAZARD_KEYS.mummy(f, true), 48, 48, (g) => paintMummy(g, f, true));
   }
+  for (let f = 0; f < COIN_FRAMES; f++) bake(HAZARD_KEYS.coin(f), COIN_SIZE, COIN_SIZE, (g) => paintCoin(g, f));
   bake(HAZARD_KEYS.dust, 8, 8, paintDust);
   bake(HAZARD_KEYS.ember, 2, 2, paintEmber);
   bake(HAZARD_KEYS.shadow, 32, 8, paintShadow);
@@ -360,4 +389,13 @@ export function registerHazardAnimations(scene) {
   make('hz-flame', Array.from({ length: FLAME_FRAMES }, (_, f) => HAZARD_KEYS.flame(f)), 10);
   make('hz-mummy-walk', Array.from({ length: MUMMY_FRAMES }, (_, f) => HAZARD_KEYS.mummy(f, false)), 6);
   make('hz-mummy-chase', Array.from({ length: MUMMY_FRAMES }, (_, f) => HAZARD_KEYS.mummy(f, true)), 9);
+  // One sweep then back to the plain face; callers set repeat/repeatDelay.
+  if (!scene.anims.exists('pk-coin-shine')) {
+    scene.anims.create({
+      key: 'pk-coin-shine',
+      frames: [1, 2, 3, 4, 5, 0].map((f) => ({ key: HAZARD_KEYS.coin(f) })),
+      frameRate: 12,
+      repeat: 0,
+    });
+  }
 }
